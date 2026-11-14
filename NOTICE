@@ -1,0 +1,19 @@
+Notices
+========
+
+This skill is original work (2026, NakhulGithesh), built from the workflow described in the video
+"How to Make Money Clipping GTA 6 Videos (Turned Into A Free Skill)" by Jad M.H.
+
+Third party components used at runtime, not vendored:
+
+* ffmpeg (GPL/LGPL build) - decoding, rendering, loudness normalisation
+* yt-dlp (Unlicense) - stream and audio downloads
+* whisper.cpp (MIT) - local speech to text
+* OpenCV (Apache 2.0) - face detection via the YuNet model
+* YuNet face detector (MIT, opencv_zoo) - facecam detection, downloaded at setup
+* Claude Code CLI (Anthropic) - optional scoring backend
+* Ollama (MIT) - optional local scoring backend
+
+The OpenShorts project (MIT, Copyright 2024 OpenShorts) informed the webcam-inset detection
+approach: a composited camera is found by locating a small, off-centre face anchored to a corner.
+That project is not included in this repository.

@@ -1,0 +1,28 @@
+{
+  "name": "gta6-clipper",
+  "version": "1.0.0",
+  "description": "Turn a long game reaction stream into ready-to-post vertical clips, automatically. Audio-only download, local transcription, loudness and chat detection, LLM scoring, facecam detection, 1080x1920 renders with captions and hashtags.",
+  "license": "MIT",
+  "author": "NakhulGithesh",
+  "entrypoint": "bin/gta6-clipper",
+  "module": "gta6clipper.cli",
+  "platforms": ["darwin"],
+  "requirements": {
+    "system": ["ffmpeg", "ffprobe", "yt-dlp", "whisper.cpp"],
+    "python": ["numpy>=1.24", "opencv-python>=4.8"],
+    "optional": ["ollama (free local LLM route)"]
+  },
+  "commands": {
+    "setup": "install dependencies and models",
+    "doctor": "report what is missing with the fix command",
+    "clip": "clip one stream by URL",
+    "auto-clip": "find today's biggest streams and clip them",
+    "status": "list what has been clipped"
+  },
+  "modes": {
+    "claude": "Claude Code CLI, subscription, best picks",
+    "ollama": "local Ollama model, free, rougher picks"
+  },
+  "outputs": ["mp4", "post caption", "clips.json", "moments.json", "transcript.json"],
+  "tags": ["gta6", "clipping", "shorts", "streams", "youtube", "macos", "local-ai"]
+}
