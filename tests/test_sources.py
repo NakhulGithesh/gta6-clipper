@@ -92,8 +92,24 @@ class TestFindStreams:
             {"id": "b", "title": "y", "is_live": True, "view_count": 100},
             {"id": "c", "title": "z", "is_live": True, "view_count": 900},
         ]
-        ranked = rank_streams(streams, limit=2)
+        ranked = rank_streams(streams, limit=2, live_only=True)
         assert [s["id"] for s in ranked] == ["c", "b"]
+
+    def test_live_streams_come_before_vods(self):
+        streams = [
+            {"id": "vod", "title": "x", "is_live": False, "view_count": 900000},
+            {"id": "live", "title": "y", "is_live": True, "view_count": 100},
+        ]
+        ranked = rank_streams(streams, limit=2)
+        assert [s["id"] for s in ranked] == ["live", "vod"]
+
+    def test_short_vods_are_skipped(self):
+        streams = [
+            {"id": "short", "title": "x", "is_live": False, "view_count": 900000, "duration": 30},
+            {"id": "long", "title": "y", "is_live": False, "view_count": 10, "duration": 4000},
+        ]
+        ranked = rank_streams(streams, limit=2, min_duration=600)
+        assert [s["id"] for s in ranked] == ["long"]
 
     def test_filters_non_live_when_required(self):
         streams = [{"id": "a", "title": "x", "is_live": False, "view_count": 5}]

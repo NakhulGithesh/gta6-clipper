@@ -10,6 +10,15 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
+# The clipper's Python dependencies live in the virtualenv setup created.
+try:
+    import numpy  # noqa: F401
+except ImportError:
+    venv_python = os.path.expanduser("~/.cache/gta6-clipper/venv/bin/python")
+    if os.path.exists(venv_python):
+        os.execv(venv_python, [venv_python, os.path.abspath(__file__)] + sys.argv[1:])
+    raise
+
 from gta6clipper import llm, moments, rubric  # noqa: E402
 
 TRANSCRIPT = [

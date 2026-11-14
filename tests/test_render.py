@@ -1,7 +1,9 @@
 """Tests for caption generation, ffmpeg filtergraph building and facecam geometry."""
+import os
+
 import pytest
 
-from gta6clipper.captions import hook_ass, words_to_ass
+from gta6clipper import captions
 from gta6clipper.facecam import facecam_box, inset_from_face, is_cornered, stable_box
 from gta6clipper.ffmpeg import loudnorm_filter, vertical_filtergraph
 
@@ -14,40 +16,63 @@ class TestCaptions:
         {"word": "this", "start": 2.4, "end": 2.8},
     ]
 
-    def test_ass_has_header_and_dialogue(self):
-        ass = words_to_ass(self.words)
-        assert ass.startswith("[Script Info]")
-        assert "Dialogue:" in ass
+    def test_events_group_words_into_phrases(self):
+        events = captions.build_events(self.words)
+        assert events
+        assert [w["text"] for w in events[0]["words"]] == ["He", "cannot", "believe"]
 
-    def test_every_word_appears(self):
-        ass = words_to_ass(self.words)
-        for w in ("He", "cannot", "believe", "this"):
-            assert w in ass
-
-    def test_karaoke_tags_present_for_word_by_word_highlight(self):
-        ass = words_to_ass(self.words)
-        assert "\\k" in ass
-
-    def test_clip_start_is_relative_to_clip(self):
+    def test_event_times_are_relative_to_the_clip(self):
         shifted = [
             {"word": "Later", "start": 100.0, "end": 100.5},
             {"word": "words", "start": 100.5, "end": 101.0},
         ]
-        ass = words_to_ass(shifted, clip_start=100.0)
-        assert "0:00:00.00" in ass
+        events = captions.build_events(shifted, clip_start=100.0)
+        assert events[0]["start"] == pytest.approx(0.0)
 
-    def test_words_outside_clip_are_dropped(self):
-        ass = words_to_ass(self.words, clip_start=0.0, clip_end=1.2)
-        assert "believe" not in ass
+    def test_words_outside_the_clip_are_dropped(self):
+        events = captions.build_events(self.words, clip_start=0.0, clip_end=1.2)
+        texts = [w["text"] for event in events for w in event["words"]]
+        assert "believe" not in texts
 
-    def test_empty_words_gives_header_only(self):
-        ass = words_to_ass([])
-        assert "Dialogue:" not in ass
+    def test_state_points_at_the_active_word(self):
+        events = captions.build_events(self.words)
+        index, word_index = captions.state_at(events, 1.5)
+        assert index == 0
+        assert events[0]["words"][word_index]["text"] == "cannot"
 
-    def test_hook_ass_has_text_and_style(self):
-        ass = hook_ass("HE LOST IT")
-        assert "HE LOST IT" in ass
-        assert "Dialogue:" in ass
+    def test_state_is_none_outside_any_event(self):
+        events = captions.build_events(self.words)
+        assert captions.state_at(events, 99.0) is None
+
+    def test_caption_layer_renders_a_transparent_video(self, tmp_path):
+        events = captions.build_events(self.words)
+        out = str(tmp_path / "captions.mov")
+        captions.render_caption_layer(events, out, duration=3.0)
+        assert os.path.getsize(out) > 1000
+
+    def test_hook_layer_renders_a_transparent_video(self, tmp_path):
+        out = str(tmp_path / "hook.mov")
+        captions.render_hook_layer("HE LOST IT", out, duration=3.0)
+        assert os.path.getsize(out) > 1000
+
+    def test_wrapped_hook_lines_fit_the_available_width(self):
+        from PIL import Image, ImageDraw
+
+        draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+        font = captions._load_font(76)
+        available = 1080 - 140
+        lines = captions._wrap(
+            "THIS CHANGES EVERYTHING AND EVERYONE WILL KNOW ABOUT IT", font, draw, available
+        )
+        assert len(lines) >= 2
+        for line in lines:
+            assert draw.textlength(line, font=font) <= available
+
+    def test_hook_shrinks_until_it_fits(self):
+        lines, font = captions._fit_hook(
+            "THIS CHANGES EVERYTHING AND EVERYONE WILL KNOW ABOUT IT SOON", 1080, 76, None
+        )
+        assert len(lines) <= 2
 
 
 class TestFiltergraph:
@@ -68,6 +93,18 @@ class TestFiltergraph:
 
     def test_loudnorm_targets_minus_14_lufs(self):
         assert "I=-14" in loudnorm_filter()
+
+    def test_layers_are_overlaid_at_their_position(self):
+        from gta6clipper.ffmpeg import render_command
+
+        cmd = render_command(
+            "in.mp4", "out.mp4", vertical_filtergraph(1920, 1080, None),
+            layers=[("hook.mov", 0, 420), ("captions.mov", 0, 1500)],
+        )
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "overlay=0:420" in graph
+        assert "overlay=0:1500" in graph
+        assert cmd.count("-i") == 3
 
 
 class TestFacecamGeometry:

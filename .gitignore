@@ -10,6 +10,7 @@ build/
 venv/
 .DS_Store
 clips/
+demo/
 work/
 *.mp4
 *.m4a

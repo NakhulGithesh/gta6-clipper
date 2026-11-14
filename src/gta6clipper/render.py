@@ -52,15 +52,23 @@ def render_clip(
     width, height = probe_size(video_path)
     graph = ffmpeg.vertical_filtergraph(width, height, box)
 
-    caption_file = os.path.join(workdir, f"captions-{os.path.basename(out_path)}.ass")
-    hook_file = os.path.join(workdir, f"hook-{os.path.basename(out_path)}.ass")
-    with open(caption_file, "w", encoding="utf-8") as handle:
-        handle.write(captions.words_to_ass(words, clip_start=start, clip_end=end))
-    with open(hook_file, "w", encoding="utf-8") as handle:
-        handle.write(captions.hook_ass(clip.get("hook", ""), duration=min(3.5, length)))
+    stem = os.path.splitext(os.path.basename(out_path))[0]
+    caption_layer = os.path.join(workdir, f"{stem}-captions.mov")
+    hook_layer = os.path.join(workdir, f"{stem}-hook.mov")
+
+    events = captions.build_events(words, clip_start=start, clip_end=end)
+    captions.render_caption_layer(events, caption_layer, duration=length)
+    captions.render_hook_layer(clip.get("hook", ""), hook_layer, duration=length)
 
     cmd = ffmpeg.render_command(
-        video_path, out_path, graph, subtitles=[caption_file, hook_file], duration=length
+        video_path,
+        out_path,
+        graph,
+        layers=[
+            (hook_layer, 0, captions.HOOK_TOP),
+            (caption_layer, 0, captions.CAPTION_TOP),
+        ],
+        duration=length,
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0:

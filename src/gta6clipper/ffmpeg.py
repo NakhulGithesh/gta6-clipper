@@ -29,7 +29,7 @@ def vertical_filtergraph(
     itself. The facecam sits above it, where a thumb never covers it.
     """
     backdrop = (
-        f"[0:v]split=3[bg][gm][fc];"
+        f"[0:v]split={3 if facecam_box else 2}[bg][gm]{'[fc]' if facecam_box else ''};"
         f"[bg]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
         f"crop={out_w}:{out_h},gblur=sigma=40[bgv];"
         f"[gm]scale={out_w}:-2[gmv]"
@@ -54,26 +54,32 @@ def render_command(
     video: str,
     output: str,
     filtergraph: str,
-    subtitles: list[str] | None = None,
+    layers: list[tuple[str, int, int]] | None = None,
     duration: float | None = None,
 ) -> list[str]:
-    """The full ffmpeg invocation for one clip (video and audio in the same file)."""
+    """The full ffmpeg invocation for one clip (video and audio in the same file).
+
+    Layers are transparent videos (caption track, hook) overlaid at x,y.
+    """
     cmd = ["ffmpeg", "-y", "-v", "error"]
     if duration:
         cmd += ["-t", f"{duration:.2f}"]
     cmd += ["-i", video]
 
+    overlays = layers or []
+    for path, _x, _y in overlays:
+        cmd += ["-i", path]
+
     chain = filtergraph
-    subs = subtitles or []
-    for index, path in enumerate(subs):
-        source = "vout" if index == 0 else f"sub{index - 1}"
-        escaped = path.replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-        chain += f";[{source}]subtitles='{escaped}'[sub{index}]"
-    final = f"sub{len(subs) - 1}" if subs else "vout"
+    source = "vout"
+    for index, (_path, x, y) in enumerate(overlays):
+        target = f"layer{index}"
+        chain += f";[{source}][{index + 1}:v]overlay={x}:{y}[{target}]"
+        source = target
 
     cmd += [
         "-filter_complex", chain,
-        "-map", f"[{final}]",
+        "-map", f"[{source}]",
         "-map", "0:a",
         "-af", loudnorm_filter(),
         "-c:v", "libx264",

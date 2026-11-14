@@ -9,13 +9,18 @@ why, plus how to do it by hand.
 |---|---|---|
 | ffmpeg / ffprobe | decoding, rendering, loudness | `brew install ffmpeg` |
 | yt-dlp | audio-only and section downloads | `brew install yt-dlp` |
-| whisper.cpp | local transcription with word timings | `brew install whisper-cpp` |
+| whisper.cpp | local transcription with word timings | `brew install whisper.cpp` |
 | `ggml-large-v3-turbo.bin` | the speech model, about 1.6 GB | downloaded into `~/.cache/gta6-clipper/models` |
-| `face_detection_yunet_2023mar.onnx` | facecam detection, about 350 KB | same folder |
+| `face_detection_yunet_2023mar.onnx` | facecam detection, about 230 KB | same folder |
+| Python venv | numpy, opencv-python, Pillow | created at `~/.cache/gta6-clipper/venv` |
 | Ollama + model | the free local LLM route | `brew install ollama`, optional |
 
 Nothing is installed system-wide without Homebrew's own prompts. The models land in
-`~/.cache/gta6-clipper/models`, which can be moved with `GTA6_CLIPPER_CACHE`.
+`~/.cache/gta6-clipper/models` and the Python packages in `~/.cache/gta6-clipper/venv`, both of
+which can be moved with `GTA6_CLIPPER_CACHE`.
+
+The Python venv is deliberate: Homebrew upgrades its Python without warning, and a skill that
+depends on `pip install --user` breaks the next time that happens.
 
 ## Route 1: Claude (recommended)
 
@@ -75,4 +80,5 @@ bin/gta6-clipper doctor
 ```
 
 Reports every dependency, the model files and both LLM backends, with the exact fix command for
-anything missing. `doctor --json` prints the same as JSON.
+anything missing. `doctor --json` prints the same as JSON. The Claude CLI and Ollama are listed as
+optional: they are two routes to the same step, and only the one in use has to be there.

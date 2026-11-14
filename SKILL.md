@@ -38,8 +38,9 @@ bin/gta6-clipper setup --mode claude    # or --mode ollama, or --mode both
 bin/gta6-clipper doctor
 ```
 
-`setup` installs ffmpeg, yt-dlp and whisper.cpp with Homebrew, downloads the whisper model and
-the facecam model, and (for the free route) Ollama with a local model. `doctor` reports anything
+`setup` installs ffmpeg, yt-dlp and whisper.cpp with Homebrew, creates a Python virtualenv in
+`~/.cache/gta6-clipper/venv` with numpy, opencv and Pillow, downloads the whisper model and the
+facecam model, and (for the free route) Ollama with a local model. `doctor` reports anything
 missing with the exact fix command.
 
 Pick the route:
@@ -77,6 +78,9 @@ The pipeline does the video's four steps:
    clip becomes 1080x1920 with the facecam on top and the gameplay underneath, word-by-word
    captions and the hook title are burned in, and audio is normalised to -14 LUFS.
 
+Captions are drawn with Pillow into a transparent layer that ffmpeg overlays, because Homebrew's
+ffmpeg has no libass and no drawtext. Nothing about the captions depends on the ffmpeg build.
+
 Output lands in `<out>/<streamer>/`: `clip-01.mp4`, `clip-01.post.txt` (caption and hashtags),
 `clips.json`, `moments.json`, `transcript.json`, `meta.json`.
 
@@ -86,9 +90,11 @@ Output lands in `<out>/<streamer>/`: `clip-01.mp4`, `clip-01.post.txt` (caption 
 bin/gta6-clipper auto-clip --count 7 --out ./clips
 ```
 
-Finds today's biggest GTA 6 reaction streams and clips each one. Seven streams is roughly a day's
-of posting. Before launch day, this is the window: everybody watches the same reactions at the
-same time, and whoever has the clips ready wins.
+Finds today's biggest GTA 6 reaction streams and clips each one: live streams first, then the
+biggest recent reaction VODs longer than ten minutes. `--live-only` restricts it to streams that
+are live right now. Seven streams is roughly a day's of posting. Before launch day, this is the
+window: everybody watches the same reactions at the same time, and whoever has the clips ready
+wins.
 
 ## Step 3: Review before posting
 

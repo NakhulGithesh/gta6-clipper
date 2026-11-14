@@ -72,6 +72,12 @@ def _doctor_checks() -> list[dict]:
         check("numpy", True, numpy.__version__)
     except ImportError:
         check("numpy", False, "missing", "pip install numpy")
+    try:
+        import PIL  # noqa: F401
+
+        check("pillow", True, PIL.__version__)
+    except ImportError:
+        check("pillow", False, "missing", "pip install Pillow")
 
     return checks
 
@@ -137,6 +143,7 @@ def cmd_auto_clip(args) -> int:
         mode=args.mode,
         cookies=args.cookies,
         clips=args.clips,
+        live_only=args.live_only,
     )
     print(json.dumps(results, indent=2))
     return 0
@@ -194,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--out", default=config.DEFAULT_OUT_DIR)
     auto.add_argument("--mode", choices=["claude", "ollama"], default="claude")
     auto.add_argument("--cookies", default=None)
+    auto.add_argument("--live-only", action="store_true", help="only clip streams that are live now")
     auto.set_defaults(func=cmd_auto_clip)
 
     status = sub.add_parser("status", help="show what has been clipped")

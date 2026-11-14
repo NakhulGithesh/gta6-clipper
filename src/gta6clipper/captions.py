@@ -1,115 +1,293 @@
-"""ASS subtitles: word-by-word captions and the hook title."""
+"""Captions: word-by-word highlighted captions and the hook, rendered with Pillow.
+
+Homebrew's ffmpeg has no libass and no drawtext, so text cannot be burned in
+by ffmpeg itself. Instead the caption track is drawn here, into a transparent
+video that ffmpeg overlays onto the clip. One layer for the captions, one for
+the hook.
+"""
 from __future__ import annotations
 
-import re
+import os
+import shutil
+import subprocess
+import tempfile
 
-DEFAULT_WIDTH = 1080
-DEFAULT_HEIGHT = 1920
+DEFAULT_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Helvetica.ttc",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/System/Library/Fonts/SFNSDisplay.ttf",
+)
 
-HEADER = """[Script Info]
-ScriptType: v4.00+
-PlayResX: {width}
-PlayResY: {height}
-WrapStyle: 2
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Arial,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,6,2,2,70,70,260,1
-Style: Hook,Arial,{hook_font_size},&H0000FFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,8,0,8,60,60,60,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-_TAG = re.compile(r"[{}\\]")
+CAPTION_HEIGHT = 360
+HOOK_HEIGHT = 360
+CAPTION_TOP = 1300
+HOOK_TOP = 420
+SAFE_MARGIN = 70
 
 
-def _clean(text: str) -> str:
-    return _TAG.sub("", text).strip()
+def font_path(preferred: str | None = None) -> str | None:
+    candidates = (preferred,) if preferred else DEFAULT_FONT_CANDIDATES
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
 
 
-def _ass_time(seconds: float) -> str:
-    seconds = max(0.0, float(seconds))
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = seconds % 60
-    return f"{h}:{m:02d}:{s:05.2f}"
-
-
-def _group(words: list[dict], max_words: int, max_chars: int) -> list[list[dict]]:
-    groups: list[list[dict]] = []
-    current: list[dict] = []
-    length = 0
-    for word in words:
-        text = str(word["word"])
-        if current and (len(current) >= max_words or length + len(text) + 1 > max_chars):
-            groups.append(current)
-            current, length = [], 0
-        current.append(word)
-        length += len(text) + 1
-    if current:
-        groups.append(current)
-    return groups
-
-
-def words_to_ass(
-    words: list[dict],
-    clip_start: float = 0.0,
-    clip_end: float | None = None,
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
-    font_size: int = 64,
-    max_words: int = 3,
-    max_chars: int = 18,
-) -> str:
-    """Captions that highlight one word at a time.
-
-    Karaoke tags do the highlighting inside the subtitle renderer, so the text
-    stays readable at any frame rate and no per-word re-render is needed.
-    """
-    header = HEADER.format(width=width, height=height, font_size=font_size, hook_font_size=72)
+def build_events(
+    words: list[dict], clip_start: float = 0.0, clip_end: float | None = None,
+    max_words: int = 3, max_chars: int = 18,
+) -> list[dict]:
+    """Group words into phrases, each with its own word timings."""
     selected = [
         w
         for w in words
         if float(w["start"]) >= clip_start
         and (clip_end is None or float(w["end"]) <= clip_end)
     ]
-    if not selected:
-        return header
+    events: list[dict] = []
+    current: list[dict] = []
+    length = 0
+    for word in selected:
+        text = str(word["word"])
+        if current and (len(current) >= max_words or length + len(text) + 1 > max_chars):
+            events.append(_event(current, clip_start))
+            current, length = [], 0
+        current.append(word)
+        length += len(text) + 1
+    if current:
+        events.append(_event(current, clip_start))
+    return events
 
-    lines = [header]
-    for group in _group(selected, max_words, max_chars):
-        start = float(group[0]["start"]) - clip_start
-        end = float(group[-1]["end"]) - clip_start
-        if end <= start:
-            end = start + 0.2
-        parts = []
-        for word in group:
-            dur = max(0.05, float(word["end"]) - float(word["start"]))
-            parts.append("{\\k%d}%s" % (int(round(dur * 100)), _clean(str(word["word"]))))
-        text = " ".join(parts)
-        lines.append(
-            "Dialogue: 0,%s,%s,Caption,,0,0,0,,%s" % (_ass_time(start), _ass_time(end), text)
+
+def _event(group: list[dict], clip_start: float) -> dict:
+    return {
+        "start": float(group[0]["start"]) - clip_start,
+        "end": float(group[-1]["end"]) - clip_start,
+        "words": [
+            {
+                "text": str(w["word"]),
+                "start": float(w["start"]) - clip_start,
+                "end": float(w["end"]) - clip_start,
+            }
+            for w in group
+        ],
+    }
+
+
+def state_at(events: list[dict], t: float) -> tuple[int, int] | None:
+    """Which phrase is showing at time t, and which word inside it is active."""
+    for index, event in enumerate(events):
+        if event["start"] <= t < event["end"]:
+            for word_index, word in enumerate(event["words"]):
+                if word["start"] <= t < word["end"]:
+                    return index, word_index
+            return index, -1
+    return None
+
+
+def _load_font(size: int, path: str | None = None):
+    from PIL import ImageFont
+
+    chosen = font_path(path)
+    if chosen:
+        try:
+            return ImageFont.truetype(chosen, size)
+        except Exception:
+            pass
+    return ImageFont.load_default(size)
+
+
+def _centered(draw, text: str, font, y: int, width: int) -> int:
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    x = (width - (right - left)) // 2 - left
+    draw.text((x, y), text, font=font)
+    return y
+
+
+def _draw_phrase(image, event: dict, active_word: int, font, width: int, height: int) -> None:
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image)
+    parts = []
+    for index, word in enumerate(event["words"]):
+        parts.append((word["text"], index == active_word))
+    full = " ".join(text for text, _ in parts)
+    left, top, right, bottom = draw.textbbox((0, 0), full, font=font)
+    text_width = right - left
+    x = (width - text_width) // 2 - left
+    y = (height - (bottom - top)) // 2 - top
+
+    cursor = x
+    for text, active in parts:
+        w_left, w_top, w_right, w_bottom = draw.textbbox((0, 0), text, font=font)
+        w_width = w_right - w_left
+        color = (255, 214, 0, 255) if active else (255, 255, 255, 255)
+        draw.text(
+            (cursor, y),
+            text,
+            font=font,
+            fill=color,
+            stroke_width=6,
+            stroke_fill=(0, 0, 0, 255),
         )
-    return "\n".join(lines) + "\n"
+        cursor += w_width + draw.textlength(" ", font=font)
 
 
-def hook_ass(
-    hook: str,
-    duration: float = 3.5,
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
-    top: int = 430,
+def render_caption_layer(
+    events: list[dict],
+    out_path: str,
+    duration: float,
+    width: int = 1080,
+    height: int = CAPTION_HEIGHT,
+    fps: int = 30,
     font_size: int = 72,
+    font: str | None = None,
 ) -> str:
-    """The on-screen promise of the clip, shown over the first seconds."""
-    header = HEADER.format(width=width, height=height, font_size=font_size, hook_font_size=font_size)
-    text = _clean(hook).upper()
-    if not text:
-        return header
-    body = (
-        "Dialogue: 0,%s,%s,Hook,,0,0,0,,{\\fad(120,120)}%s"
-        % (_ass_time(0), _ass_time(duration), text)
+    """A transparent video with the captions on it."""
+    return _render_layer(
+        out_path,
+        duration,
+        width,
+        height,
+        fps,
+        painter=lambda image, t: _paint_captions(image, events, t, font_size, font, width, height),
     )
-    return header + body + "\n"
+
+
+def _paint_captions(image, events, t, font_size, font_path, width, height) -> None:
+    state = state_at(events, t)
+    if state is None:
+        return
+    index, word_index = state
+    from PIL import ImageFont
+
+    font = _load_font(font_size, font_path)
+    _draw_phrase(image, events[index], word_index, font, width, height)
+
+
+def render_hook_layer(
+    hook: str,
+    out_path: str,
+    duration: float = 3.5,
+    show_for: float = 3.5,
+    width: int = 1080,
+    height: int = HOOK_HEIGHT,
+    fps: int = 30,
+    font_size: int = 76,
+    font: str | None = None,
+) -> str:
+    """A transparent video with the hook on it, for the first seconds."""
+    text = (hook or "").strip().upper()
+    if not text:
+        return _render_layer(out_path, duration, width, height, fps, painter=lambda image, t: None)
+
+    from PIL import ImageDraw
+
+    lines, chosen_font = _fit_hook(text, width, font_size, font)
+
+    def painter(image, t):
+        if t >= show_for:
+            return
+        draw = ImageDraw.Draw(image)
+        padding = 26
+        line_height = chosen_font.getbbox("Ag")[3] - chosen_font.getbbox("Ag")[1]
+        gap = 8
+        total = line_height * len(lines) + gap * (len(lines) - 1)
+        y = (height - total) // 2
+        for line in lines:
+            left, top, right, bottom = draw.textbbox((0, 0), line, font=chosen_font)
+            x = (width - (right - left)) // 2 - left
+            draw.rounded_rectangle(
+                [x - padding, y - padding, x + (right - left) + padding, y + (bottom - top) + padding],
+                radius=16,
+                fill=(0, 0, 0, 170),
+            )
+            draw.text(
+                (x, y),
+                line,
+                font=chosen_font,
+                fill=(255, 214, 0, 255),
+                stroke_width=5,
+                stroke_fill=(0, 0, 0, 255),
+            )
+            y += line_height + gap
+
+    return _render_layer(out_path, duration, width, height, fps, painter=painter)
+
+
+def _fit_hook(text: str, width: int, font_size: int, font: str | None):
+    """Wrap the hook and shrink it until it fits inside the safe margins."""
+    from PIL import ImageDraw, Image
+
+    draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+    available = width - 2 * SAFE_MARGIN
+
+    size = font_size
+    while size >= 34:
+        chosen = _load_font(size, font)
+        lines = _wrap(text, chosen, draw, available)
+        if len(lines) <= 2:
+            return lines, chosen
+        size -= 6
+    chosen = _load_font(34, font)
+    return _wrap(text, chosen, draw, available), chosen
+
+
+def _wrap(text: str, chosen_font, draw, available: int) -> list[str]:
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if draw.textlength(candidate, font=chosen_font) <= available or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _render_layer(out_path: str, duration: float, width: int, height: int, fps: int, painter) -> str:
+    """Render frames into a transparent video, one paint per visible state."""
+    from PIL import Image
+
+    total_frames = max(1, int(round(duration * fps)))
+    if os.path.exists(out_path):
+        os.remove(out_path)
+
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{width}x{height}", "-r", str(fps),
+        "-i", "-",
+        "-c:v", "qtrle", "-pix_fmt", "rgba",
+        out_path,
+    ]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        cache: dict[tuple, bytes] = {}
+        for frame_index in range(total_frames):
+            t = frame_index / fps
+            key = (round(t, 2),)
+            image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            painter(image, t)
+            data = image.tobytes()
+            proc.stdin.write(data)
+    finally:
+        proc.stdin.close()
+        stderr = proc.stderr.read().decode("utf-8", "replace")
+        code = proc.wait()
+    if code != 0:
+        raise RuntimeError(f"caption layer render failed: {stderr[-400:]}")
+    return out_path
+
+
+def clean_temp(*paths: str) -> None:
+    for path in paths:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass

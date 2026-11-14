@@ -126,8 +126,22 @@ def whisper_binary() -> str | None:
 
 
 def model_path(model: str = "large-v3-turbo", cache_dir: str | None = None) -> str:
-    cache = cache_dir or os.path.expanduser("~/.cache/gta6-clipper")
-    return os.path.join(cache, WHISPER_MODELS.get(model, WHISPER_MODELS["large-v3-turbo"]))
+    from . import config
+
+    cache = cache_dir or config.CACHE_DIR
+    return os.path.join(config.MODEL_DIR, WHISPER_MODELS.get(model, WHISPER_MODELS["large-v3-turbo"]))
+
+
+def to_wav(audio_path: str, out_path: str, sample_rate: int = 16000) -> str:
+    """16 kHz mono wav. whisper.cpp reads wav, not the container yt-dlp gives us."""
+    cmd = [
+        "ffmpeg", "-y", "-v", "error", "-i", audio_path,
+        "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", out_path,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg wav conversion failed: {proc.stderr.strip()[:300]}")
+    return out_path
 
 
 def transcribe_whisper(audio_path: str, outdir: str, model: str = "large-v3-turbo") -> list[dict]:
@@ -140,8 +154,10 @@ def transcribe_whisper(audio_path: str, outdir: str, model: str = "large-v3-turb
         raise RuntimeError(f"whisper model missing: {weights} (run: gta6-clipper setup)")
 
     os.makedirs(outdir, exist_ok=True)
+    wav = os.path.join(outdir, "audio16k.wav")
+    to_wav(audio_path, wav)
     stem = os.path.join(outdir, "whisper")
-    cmd = [binary, "-m", weights, "-f", audio_path, "-oj", "-of", stem, "-np"]
+    cmd = [binary, "-m", weights, "-f", wav, "-oj", "-of", stem, "-np"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
     if proc.returncode != 0:
         raise RuntimeError(f"whisper.cpp failed: {proc.stderr.strip()[:400]}")

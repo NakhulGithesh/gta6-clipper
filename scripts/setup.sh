@@ -22,11 +22,15 @@ done
 
 CACHE="${GTA6_CLIPPER_CACHE:-$HOME/.cache/gta6-clipper}"
 MODEL_DIR="$CACHE/models"
+VENV_DIR="$CACHE/venv"
 WHISPER_MODEL="$MODEL_DIR/ggml-large-v3-turbo.bin"
 FACECAM_MODEL="$MODEL_DIR/face_detection_yunet_2023mar.onnx"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 WHISPER_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
-FACECAM_URL="https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+# media.githubusercontent.com serves the real file: raw.githubusercontent.com returns
+# the Git LFS pointer, which is not a model.
+FACECAM_URL="https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 
 say() { printf '[setup] %s\n' "$*"; }
 
@@ -40,6 +44,7 @@ check_all() {
   if have whisper-cli || have main || have whisper-cpp; then say "ok   whisper.cpp"; else say "MISS whisper.cpp"; missing=1; fi
   if [ -f "$WHISPER_MODEL" ]; then say "ok   whisper model"; else say "MISS whisper model"; missing=1; fi
   if [ -f "$FACECAM_MODEL" ]; then say "ok   facecam model"; else say "MISS facecam model"; missing=1; fi
+  if [ -x "$VENV_DIR/bin/python" ]; then say "ok   python env"; else say "MISS python env"; missing=1; fi
   return $missing
 }
 
@@ -56,8 +61,20 @@ if ! have brew; then
   exit 1
 fi
 
-for formula in ffmpeg yt-dlp whisper-cpp; do
-  if brew list --formula 2>/dev/null | grep -qx "$formula"; then
+installed_formula() {
+  # case statement, not a pipe: brew gets SIGPIPE under pipefail when grep exits early
+  case "
+$(brew list --formula 2>/dev/null || true)
+" in
+    *"
+$1
+"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+for formula in ffmpeg yt-dlp whisper.cpp; do
+  if installed_formula "$formula"; then
     say "have $formula"
   else
     say "installing $formula"
@@ -67,6 +84,16 @@ done
 
 mkdir -p "$MODEL_DIR"
 
+# Python dependencies live in their own virtualenv: the system Python moves
+# (Homebrew upgrades it) and the clipper must keep working.
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+  say "creating python env at $VENV_DIR"
+  python3 -m venv "$VENV_DIR"
+fi
+say "installing python dependencies"
+"$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip
+"$VENV_DIR/bin/python" -m pip install --quiet -r "$HERE/requirements-dev.txt"
+
 if [ "$SKIP_MODEL" -eq 0 ]; then
   if [ ! -f "$WHISPER_MODEL" ]; then
     say "downloading whisper model (about 1.6 GB)"
@@ -74,9 +101,13 @@ if [ "$SKIP_MODEL" -eq 0 ]; then
   else
     say "have whisper model"
   fi
-  if [ ! -f "$FACECAM_MODEL" ]; then
+  if [ ! -f "$FACECAM_MODEL" ] || [ ! -s "$FACECAM_MODEL" ] || [ "$(wc -c < "$FACECAM_MODEL")" -lt 100000 ]; then
     say "downloading facecam model"
     curl -L --fail --progress-bar -o "$FACECAM_MODEL" "$FACECAM_URL"
+    if [ "$(wc -c < "$FACECAM_MODEL")" -lt 100000 ]; then
+      say "facecam model download looks wrong (too small): $FACECAM_MODEL"
+      exit 1
+    fi
   else
     say "have facecam model"
   fi

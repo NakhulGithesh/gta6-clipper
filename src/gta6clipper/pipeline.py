@@ -178,13 +178,14 @@ def auto_clip(
     out_dir: str = config.DEFAULT_OUT_DIR,
     mode: str = "claude",
     cookies: str | None = None,
+    live_only: bool = False,
     **kwargs,
 ) -> list[dict]:
-    """Clip the biggest live streams of the day."""
+    """Clip the biggest streams of the day."""
     _log(f"looking for today's biggest {find_streams.GAME} streams")
-    streams = find_streams.top_streams(count=count, cookies=cookies)
+    streams = find_streams.top_streams(count=count, cookies=cookies, live_only=live_only)
     if not streams:
-        _log("no live streams found")
+        _log("no streams found")
         return []
     results = []
     for stream in streams:

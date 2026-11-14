@@ -2,5 +2,15 @@
 # CLI entrypoint. Works from a clone, no install step.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CACHE="${GTA6_CLIPPER_CACHE:-$HOME/.cache/gta6-clipper}"
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m gta6clipper.cli "$@"
+
+# Prefer the virtualenv setup created, because the system Python can move
+# (Homebrew upgrades it) without warning.
+if [ -x "$CACHE/venv/bin/python" ]; then
+  PYTHON="$CACHE/venv/bin/python"
+else
+  PYTHON="${GTA6_CLIPPER_PYTHON:-python3}"
+fi
+
+exec "$PYTHON" -m gta6clipper.cli "$@"

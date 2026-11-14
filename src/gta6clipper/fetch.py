@@ -46,9 +46,10 @@ def metadata_command(url: str, cookies: str | None = None) -> list[str]:
 
 
 def search_command(query: str, limit: int = 20, cookies: str | None = None) -> list[str]:
+    # --dump-json (not --flat-playlist): a flat entry has no live status and no
+    # viewer count, which is exactly what the ranking needs.
     return _base(cookies) + [
-        "--dump-single-json",
-        "--flat-playlist",
+        "--dump-json",
         f"ytsearch{limit}:{query}",
     ]
 
@@ -109,17 +110,23 @@ def fetch_video_section(
 
 
 def search_live(query: str, limit: int = 20, cookies: str | None = None) -> list[dict]:
-    """Live streams matching a query, newest and biggest first."""
-    proc = run(search_command(query, limit, cookies), timeout=300)
-    if proc.returncode != 0:
+    """Live streams matching a query, biggest first."""
+    proc = run(search_command(query, limit, cookies), timeout=600)
+    entries: list[dict] = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not entries:
         raise RuntimeError(f"yt-dlp search failed: {proc.stderr.strip()[:400]}")
-    try:
-        payload = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return []
-    entries = payload.get("entries") if isinstance(payload, dict) else payload
+    # A single age-restricted result makes yt-dlp exit non-zero while the other
+    # results are still on stdout, so the exit code alone is not a failure here.
     out = []
-    for entry in entries or []:
+    for entry in entries:
         if not entry:
             continue
         out.append(
@@ -130,7 +137,8 @@ def search_live(query: str, limit: int = 20, cookies: str | None = None) -> list
                 "is_live": bool(entry.get("is_live")),
                 "live_status": entry.get("live_status", "") or "",
                 "view_count": int(entry.get("view_count") or 0),
-                "url": entry.get("url") or entry.get("webpage_url") or "",
+                "duration": float(entry.get("duration") or 0),
+                "url": entry.get("webpage_url") or f"https://www.youtube.com/watch?v={entry.get('id', '')}",
             }
         )
     return out

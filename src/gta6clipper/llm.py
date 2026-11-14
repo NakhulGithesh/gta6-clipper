@@ -31,9 +31,12 @@ class Backend:
             self.command(prompt), capture_output=True, text=True, timeout=timeout
         )
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"{self.name} backend failed: {(proc.stderr or proc.stdout).strip()[:500]}"
-            )
+            message = (proc.stderr or proc.stdout).strip()
+            if "Not logged in" in message:
+                raise RuntimeError(
+                    "the Claude Code CLI is not logged in: run `claude` once and use /login"
+                )
+            raise RuntimeError(f"{self.name} backend failed: {message[:500]}")
         return proc.stdout.strip()
 
 

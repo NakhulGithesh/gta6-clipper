@@ -10,9 +10,11 @@ MODEL_DIR = os.path.join(CACHE_DIR, "models")
 WHISPER_MODEL = os.path.join(MODEL_DIR, "ggml-large-v3-turbo.bin")
 FACECAM_MODEL = os.path.join(MODEL_DIR, "face_detection_yunet_2023mar.onnx")
 
+# media.githubusercontent.com serves the real file: raw.githubusercontent.com returns
+# the Git LFS pointer, which is not a model.
 FACECAM_MODEL_URL = (
-    "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_detection_yunet/"
-    "face_detection_yunet_2023mar.onnx"
+    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
+    "face_detection_yunet/face_detection_yunet_2023mar.onnx"
 )
 
 DEFAULT_OUT_DIR = os.path.join(os.getcwd(), "clips")

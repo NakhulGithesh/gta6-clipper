@@ -86,6 +86,7 @@ def facecam_box(
     if not os.path.exists(model_path) or not os.path.exists(video_path):
         return None
     try:
+        os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
         import cv2
     except ImportError:
         return None

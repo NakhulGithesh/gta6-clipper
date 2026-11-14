@@ -37,6 +37,9 @@ bin/gta6-clipper clip "<url>" --cookies chrome
 # find today's biggest GTA 6 streams and clip them
 bin/gta6-clipper auto-clip --count 7 --out ./clips
 
+# only what is live right now
+bin/gta6-clipper auto-clip --count 7 --live-only
+
 # what has been clipped
 bin/gta6-clipper status --out ./clips
 ```
@@ -72,8 +75,11 @@ day of posting.
 
 - macOS, Python 3.10+
 - ffmpeg, ffprobe, yt-dlp, whisper.cpp (`bin/gta6-clipper setup` installs them)
-- numpy and opencv-python (`pip install -r requirements.txt`)
+- numpy, opencv-python and Pillow, installed by setup into `~/.cache/gta6-clipper/venv`
 - a scoring backend: Claude Code CLI, or Ollama with a local model
+
+Captions are drawn with Pillow into a transparent layer that ffmpeg overlays, so the skill works
+with Homebrew's ffmpeg even though that build has no libass and no drawtext.
 
 ## Free route
 
@@ -94,10 +100,10 @@ The free model is not Claude: slower, rougher picks. It still beats scrubbing a 
 ## Development
 
 ```bash
-python3 -m pytest -q tests          # unit suite
-python3 scripts/verify_package.py   # package structure
-python3 scripts/verify_scoring.py   # rubric and scoring plumbing
-python3 scripts/verify_e2e.py       # real video to real clips
+~/.cache/gta6-clipper/venv/bin/python -m pytest -q tests   # unit suite
+~/.cache/gta6-clipper/venv/bin/python scripts/verify_package.py   # package structure
+~/.cache/gta6-clipper/venv/bin/python scripts/verify_scoring.py   # rubric and scoring plumbing
+~/.cache/gta6-clipper/venv/bin/python scripts/verify_e2e.py       # real video to real clips
 ```
 
 ## License
