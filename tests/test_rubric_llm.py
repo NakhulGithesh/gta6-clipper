@@ -1,7 +1,16 @@
 """Tests for the scoring rubric and LLM response handling."""
+import shutil
+
 import pytest
 
-from gta6clipper.llm import OllamaBackend, ClaudeCliBackend, get_backend, parse_moments
+from gta6clipper.llm import (
+    ClaudeCliBackend,
+    CommandBackend,
+    OpenAIBackend,
+    OpenCodeBackend,
+    get_backend,
+    parse_moments,
+)
 from gta6clipper.rubric import MOMENT_TYPES, build_scoring_prompt, validate_moment
 
 
@@ -110,23 +119,47 @@ class TestParseMoments:
 
 
 class TestBackends:
-    def test_get_backend_by_mode(self):
-        assert isinstance(get_backend("claude"), ClaudeCliBackend)
-        assert isinstance(get_backend("ollama"), OllamaBackend)
+    def test_get_backend_by_spec(self, monkeypatch):
+        # claude binary is installed
+        if shutil.which("claude"):
+            assert isinstance(get_backend("claude"), ClaudeCliBackend)
+        # openai probe may or may not reach a server; mock it
+        monkeypatch.setattr(OpenAIBackend, "probe", lambda self: True)
+        assert isinstance(get_backend("openai"), OpenAIBackend)
 
-    def test_unknown_mode_raises(self):
+    def test_explicit_backend_raises_when_unreachable(self):
+        # opencode is not installed
+        with pytest.raises(RuntimeError):
+            get_backend("opencode")
+
+    def test_cmd_backend(self):
+        b = CommandBackend("printf '%s' hi")
+        assert isinstance(b, CommandBackend)
+        assert b.complete("ignored") == "hi"
+
+    def test_cmd_backend_passes_prompt_through(self):
+        b = CommandBackend("printf '%s' {prompt}")
+        assert b.complete("hello") == "hello"
+
+    def test_unknown_backend_raises(self):
         with pytest.raises(ValueError):
             get_backend("gpt")
 
-    def test_claude_backend_builds_command_without_api_key(self):
-        b = ClaudeCliBackend()
-        cmd = b.command("hello")
-        assert cmd[0].endswith("claude")
-        assert "-p" in cmd
-        assert "hello" in cmd
+    def test_auto_raises_when_nothing_reachable(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
 
-    def test_ollama_backend_uses_configured_model(self):
-        b = OllamaBackend(model="qwen3.5:9b")
-        cmd = b.command("hello")
-        assert "qwen3.5:9b" in cmd
-        assert "hello" in cmd
+        monkeypatch.setattr(llm_mod.OpenCodeBackend, "probe", lambda self: False)
+        monkeypatch.setattr(llm_mod.ClaudeCliBackend, "probe", lambda self: False)
+        monkeypatch.setattr(llm_mod.OpenAIBackend, "probe", lambda self: False)
+        with pytest.raises(RuntimeError):
+            get_backend("auto")
+
+    def test_claude_backend_probe(self):
+        b = ClaudeCliBackend()
+        # probe only checks the binary exists; may be False if claude isn't installed
+        assert b.probe() == (shutil.which("claude") is not None)
+
+    def test_openai_backend_uses_base_and_model(self):
+        b = OpenAIBackend(base_url="http://x/v1", model="qwen3.8-27b")
+        assert b.base_url == "http://x/v1"
+        assert b.model == "qwen3.8-27b"

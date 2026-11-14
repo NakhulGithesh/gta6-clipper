@@ -51,12 +51,22 @@ def _doctor_checks() -> list[dict]:
         "" if claude else "npm i -g @anthropic-ai/claude-code",
         required=False,
     )
-    ollama = shutil.which("ollama")
+    opencode = shutil.which("opencode")
     check(
-        "ollama",
-        ollama and pipeline.ollama_ready(),
-        ollama or "missing",
-        "" if ollama else "brew install ollama && ollama serve",
+        "opencode cli",
+        opencode,
+        opencode or "missing",
+        "" if opencode else "npm i -g @opencode/opencode",
+        required=False,
+    )
+
+    base_url = os.environ.get("GTA6_CLIPPER_LLM_BASE_URL", "http://localhost:1234/v1")
+    model = os.environ.get("GTA6_CLIPPER_LLM_MODEL", "")
+    check(
+        "openai endpoint",
+        base_url,
+        f"{base_url} ({model or '<default model>'})",
+        f"set GTA6_CLIPPER_LLM_BASE_URL / GTA6_CLIPPER_LLM_MODEL (default {base_url})",
         required=False,
     )
 
@@ -113,11 +123,15 @@ def cmd_setup(args) -> int:
         print(f"setup script not found: {script}", file=sys.stderr)
         return 2
     cmd = ["bash", script]
-    if args.mode:
-        cmd += ["--mode", args.mode]
     if args.skip_model:
         cmd += ["--skip-model"]
     return subprocess.call(cmd)
+
+
+def _backend_for(args) -> object:
+    from . import llm
+
+    return llm.get_backend(args.backend)
 
 
 def cmd_clip(args) -> int:
@@ -125,7 +139,7 @@ def cmd_clip(args) -> int:
         args.url,
         out_dir=args.out,
         clips=args.clips,
-        mode=args.mode,
+        backend=_backend_for(args),
         cookies=args.cookies,
         model=args.model,
         skip_render=args.no_render,
@@ -140,7 +154,7 @@ def cmd_auto_clip(args) -> int:
     results = pipeline.auto_clip(
         count=args.count,
         out_dir=args.out,
-        mode=args.mode,
+        backend=_backend_for(args),
         cookies=args.cookies,
         clips=args.clips,
         live_only=args.live_only,
@@ -175,7 +189,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     setup = sub.add_parser("setup", help="install dependencies and models")
-    setup.add_argument("--mode", choices=["claude", "ollama", "both"], default="both")
     setup.add_argument("--skip-model", action="store_true", help="do not download the whisper model")
     setup.set_defaults(func=cmd_setup)
 
@@ -187,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     clip.add_argument("url")
     clip.add_argument("--out", default=config.DEFAULT_OUT_DIR)
     clip.add_argument("--clips", type=int, default=config.DEFAULT_CLIP_COUNT)
-    clip.add_argument("--mode", choices=["claude", "ollama"], default="claude")
+    clip.add_argument("--backend", default="auto", help="LLM backend: opencode, claude, openai, cmd:'<template>', auto")
     clip.add_argument("--model", default=None, help="model name for the chosen backend")
     clip.add_argument("--cookies", default=None, help="browser for --cookies-from-browser, e.g. chrome")
     clip.add_argument("--window", type=int, default=config.WINDOW_MINUTES)
@@ -199,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--count", type=int, default=7)
     auto.add_argument("--clips", type=int, default=config.DEFAULT_CLIP_COUNT)
     auto.add_argument("--out", default=config.DEFAULT_OUT_DIR)
-    auto.add_argument("--mode", choices=["claude", "ollama"], default="claude")
+    auto.add_argument("--backend", default="auto", help="LLM backend: opencode, claude, openai, cmd:'<template>', auto")
     auto.add_argument("--cookies", default=None)
     auto.add_argument("--live-only", action="store_true", help="only clip streams that are live now")
     auto.set_defaults(func=cmd_auto_clip)

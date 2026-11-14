@@ -8,11 +8,11 @@ description: >-
   gameplay underneath, word-by-word captions, a hook title and a post caption with hashtags.
   Use when someone says "clip GTA 6", "clip this stream", "make clips from this reaction
   stream", "find today's biggest GTA 6 streams and clip them", "AI clipper", or asks how to make
-  money clipping game streams. Two ways to run it: a Claude subscription (best picks) or a free
-  local Ollama model (no API key). macOS only. Clips only what the user may use, and nothing
-  posts without their yes.
+  money clipping game streams. The scoring LLM is pluggable: opencode, claude, or any
+  OpenAI-compatible endpoint (LM Studio, llama.cpp server, Ollama /v1, vLLM, cloud API, or a
+  custom command). macOS only. Clips only what the user may use, and nothing posts without their yes.
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 license: MIT
 ---
 
@@ -34,24 +34,32 @@ Four commitments:
 ## Step 0: Setup
 
 ```bash
-bin/gta6-clipper setup --mode claude    # or --mode ollama, or --mode both
+bin/gta6-clipper setup
 bin/gta6-clipper doctor
 ```
 
 `setup` installs ffmpeg, yt-dlp and whisper.cpp with Homebrew, creates a Python virtualenv in
-`~/.cache/gta6-clipper/venv` with numpy, opencv and Pillow, downloads the whisper model and the
-facecam model, and (for the free route) Ollama with a local model. `doctor` reports anything
-missing with the exact fix command.
+`~/.cache/gta6-clipper/venv` with numpy, opencv and Pillow, and downloads the whisper model and
+the facecam model. `doctor` reports anything missing with the exact fix command.
 
-Pick the route:
+Setup installs **no LLM server** — the clipper doesn't require one. Pick your scoring backend at
+clip time:
 
-| Route | Needs | Cost | Picks |
+| Backend | `--backend` value | Cost | Notes |
 |---|---|---|---|
-| `claude` (default) | Claude Code CLI on a subscription | $20/month | Best, fastest. No API key. |
-| `ollama` | Ollama + `qwen3.5:27b` (32 GB+ RAM) or `qwen3.5:9b` (16 GB) | Free | Slower, rougher, needs more back and forth |
+| `opencode` | `opencode` | Free / subscription | opencode CLI, `opencode run <prompt>` |
+| `claude` | `claude` | $20/month | Claude Code CLI, no API key |
+| `openai` | `openai` | Depends | Any OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1, vLLM, cloud) |
+| `cmd:<template>` | `cmd:'<template>'` | Depends | Any shell command with `{prompt}` |
+| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai endpoint → `GTA6_CLIPPER_LLM_COMMAND` |
 
-Be honest with the user about the difference: the free model is not Claude. It still beats
-scrubbing a stream by hand.
+OpenAI-compatible env vars:
+
+- `GTA6_CLIPPER_LLM_BASE_URL` — default `http://localhost:1234/v1` (LM Studio)
+- `GTA6_CLIPPER_LLM_MODEL` — model name, e.g. `qwen3.8-27b-uncensored-mlx`
+- `GTA6_CLIPPER_LLM_API_KEY` — only if the endpoint requires one
+
+Your LM Studio model is a free local route — just leave LM Studio running and use `--backend openai`. No Ollama install needed.
 
 ## Step 1: Clip a stream
 
@@ -63,8 +71,24 @@ Options that matter:
 
 - `--cookies chrome` for age-restricted YouTube streams and Kick. Needed for most GTA streams.
 - `--clips 3` how many clips to keep (default 3).
-- `--mode claude|ollama` which backend scores the moments.
+- `--backend claude|openai|opencode|cmd:'<template>'|auto` which LLM scores the moments.
 - `--no-render` stop after scoring, when the user only wants to see the picks.
+
+Examples:
+
+```bash
+# free, local, via LM Studio (leave LM Studio running)
+bin/gta6-clipper clip "<url>" --backend openai
+
+# via opencode CLI
+bin/gta6-clipper clip "<url>" --backend opencode
+
+# via Claude subscription
+bin/gta6-clipper clip "<url>" --backend claude
+
+# via any command (e.g. ollama)
+bin/gta6-clipper clip "<url>" --backend "cmd:ollama run qwen3.5:27b {prompt}"
+```
 
 The pipeline does the video's four steps:
 
@@ -114,12 +138,14 @@ Checklist before posting:
 
 - Mac only.
 - Age-restricted streams and Kick need `--cookies chrome`.
-- The free Ollama route gives rougher picks. If the user earns from this, get the subscription.
+- If you want free local scoring, run an OpenAI-compatible endpoint (LM Studio, llama.cpp,
+  Ollama /v1) and use `--backend openai`. Ollama still works via
+  `--backend "cmd:ollama run MODEL {prompt}"`.
 - YouTube Partner Program eligibility: 1,000 subscribers and 4,000 watch hours in 12 months, or
   10 million Shorts views in 90 days.
 
 ## References
 
 - `references/rubric.md` - the moment types, the score, and what gets thrown away.
-- `references/setup.md` - installing the free route, memory to model, and the Claude route.
+- `references/setup.md` - what setup installs, and how to point the clipper at your LLM.
 - `references/platform-notes.md` - cookies, age gates, clipping programs, monetisation.

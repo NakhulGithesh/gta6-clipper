@@ -12,7 +12,8 @@ Third party components used at runtime, not vendored:
 * OpenCV (Apache 2.0) - face detection via the YuNet model
 * YuNet face detector (MIT, opencv_zoo) - facecam detection, downloaded at setup
 * Claude Code CLI (Anthropic) - optional scoring backend
-* Ollama (MIT) - optional local scoring backend
+* Any OpenAI-compatible chat-completions endpoint (LM Studio, llama.cpp server, Ollama /v1,
+  vLLM, cloud API) - optional scoring backend via the openai route
 
 The OpenShorts project (MIT, Copyright 2024 OpenShorts) informed the webcam-inset detection
 approach: a composited camera is found by locating a small, off-centre face anchored to a corner.

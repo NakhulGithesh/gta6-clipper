@@ -62,7 +62,8 @@ def clip_stream(
     url: str,
     out_dir: str = config.DEFAULT_OUT_DIR,
     clips: int = config.DEFAULT_CLIP_COUNT,
-    mode: str = "claude",
+    backend: llm.Backend | None = None,
+    backend_spec: str = "auto",
     cookies: str | None = None,
     model: str | None = None,
     skip_render: bool = False,
@@ -70,7 +71,6 @@ def clip_stream(
     window_minutes: int = config.WINDOW_MINUTES,
     min_score: int = config.MIN_SCORE,
     query: str = "",
-    backend: llm.Backend | None = None,
 ) -> dict:
     started = time.time()
     os.makedirs(out_dir, exist_ok=True)
@@ -109,8 +109,8 @@ def clip_stream(
     candidates = moments.dedupe(candidates, min_gap_s=10.0)
 
     windows = moments.windows_from_words(words, window_minutes=window_minutes)
-    _log(f"scoring {len(windows)} transcript windows with the {mode} backend")
-    backend = backend or llm.get_backend(mode, model)
+    _log(f"scoring {len(windows)} transcript windows with the {backend_spec} backend")
+    backend = backend or llm.get_backend(backend_spec, model)
     selected, errors = score_windows(windows, backend, min_score=min_score)
     selected = sorted(selected, key=lambda m: -float(m["score"]))[:clips]
     selected.sort(key=lambda m: float(m["start"]))
@@ -176,7 +176,8 @@ def clip_stream(
 def auto_clip(
     count: int = 7,
     out_dir: str = config.DEFAULT_OUT_DIR,
-    mode: str = "claude",
+    backend: llm.Backend | None = None,
+    backend_spec: str = "auto",
     cookies: str | None = None,
     live_only: bool = False,
     **kwargs,
@@ -192,18 +193,17 @@ def auto_clip(
         url = stream.get("url") or f"https://www.youtube.com/watch?v={stream.get('id')}"
         _log(f"stream: {stream.get('title')} by {stream.get('channel')}")
         try:
-            results.append(clip_stream(url, out_dir=out_dir, mode=mode, cookies=cookies, **kwargs))
+            results.append(
+                clip_stream(
+                    url,
+                    out_dir=out_dir,
+                    backend=backend,
+                    backend_spec=backend_spec,
+                    cookies=cookies,
+                    **kwargs,
+                )
+            )
         except Exception as exc:
             _log(f"failed: {exc}")
             results.append({"meta": stream, "clips": [], "errors": [str(exc)]})
     return results
-
-
-def ollama_ready() -> bool:
-    if not shutil.which("ollama"):
-        return False
-    try:
-        proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=20)
-        return proc.returncode == 0
-    except Exception:
-        return False

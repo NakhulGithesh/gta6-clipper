@@ -1,7 +1,7 @@
 {
   "name": "gta6-clipper",
-  "version": "1.0.0",
-  "description": "Turn a long game reaction stream into ready-to-post vertical clips, automatically. Audio-only download, local transcription, loudness and chat detection, LLM scoring, facecam detection, 1080x1920 renders with captions and hashtags.",
+  "version": "1.1.0",
+  "description": "Turn a long game reaction stream into ready-to-post vertical clips, automatically. Audio-only download, local transcription, loudness and chat detection, pluggable LLM scoring (opencode, claude, or any OpenAI-compatible endpoint), facecam detection, 1080x1920 renders with captions and hashtags.",
   "license": "MIT",
   "author": "NakhulGithesh",
   "entrypoint": "bin/gta6-clipper",
@@ -9,8 +9,8 @@
   "platforms": ["darwin"],
   "requirements": {
     "system": ["ffmpeg", "ffprobe", "yt-dlp", "whisper.cpp"],
-    "python": ["numpy>=1.24", "opencv-python>=4.8"],
-    "optional": ["ollama (free local LLM route)"]
+    "python": ["numpy>=1.24", "opencv-python>=4.8", "Pillow>=10.0"],
+    "optional": ["opencode CLI", "Claude Code CLI", "OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1)"]
   },
   "commands": {
     "setup": "install dependencies and models",
@@ -19,9 +19,12 @@
     "auto-clip": "find today's biggest streams and clip them",
     "status": "list what has been clipped"
   },
-  "modes": {
+  "backends": {
+    "opencode": "opencode CLI, free/subscription",
     "claude": "Claude Code CLI, subscription, best picks",
-    "ollama": "local Ollama model, free, rougher picks"
+    "openai": "any OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1, vLLM)",
+    "cmd": "any shell command with {prompt}, e.g. cmd:'ollama run qwen3.5:27b {prompt}'",
+    "auto": "probes opencode -> claude -> openai -> GTA6_CLIPPER_LLM_COMMAND"
   },
   "outputs": ["mp4", "post caption", "clips.json", "moments.json", "transcript.json"],
   "tags": ["gta6", "clipping", "shorts", "streams", "youtube", "macos", "local-ai"]

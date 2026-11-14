@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# Install everything the clipper needs: binaries, models, and the optional local LLM.
+# Install everything the clipper needs: binaries, models, and Python deps.
+# LLMs are pluggable: opencode, claude, or any OpenAI-compatible endpoint
+# (LM Studio, llama.cpp, Ollama /v1, etc.) via --backend opencode|claude|openai
+# or cmd:'<template>' at clip time. Setup itself installs no LLM server.
 set -euo pipefail
 
-MODE="both"
 SKIP_MODEL=0
 CHECK_ONLY=0
-OLLAMA_MODEL="${GTA6_CLIPPER_OLLAMA_MODEL:-qwen3.5:27b}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --mode) MODE="$2"; shift 2 ;;
     --skip-model) SKIP_MODEL=1; shift ;;
     --check) CHECK_ONLY=1; shift ;;
-    --ollama-model) OLLAMA_MODEL="$2"; shift 2 ;;
     -h|--help)
-      echo "usage: setup.sh [--mode claude|ollama|both] [--skip-model] [--check] [--ollama-model NAME]"
+      echo "usage: setup.sh [--skip-model] [--check]"
       exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -110,26 +109,6 @@ if [ "$SKIP_MODEL" -eq 0 ]; then
     fi
   else
     say "have facecam model"
-  fi
-fi
-
-if [ "$MODE" = "ollama" ] || [ "$MODE" = "both" ]; then
-  if ! have ollama; then
-    say "installing ollama"
-    brew install ollama
-  else
-    say "have ollama"
-  fi
-  if ! ollama list >/dev/null 2>&1; then
-    say "starting ollama"
-    (nohup ollama serve >"$CACHE/ollama.log" 2>&1 &) || true
-    sleep 3
-  fi
-  if ollama list 2>/dev/null | grep -q "^${OLLAMA_MODEL%%:*}"; then
-    say "have ollama model $OLLAMA_MODEL"
-  else
-    say "pulling $OLLAMA_MODEL (this is a large download)"
-    ollama pull "$OLLAMA_MODEL"
   fi
 fi
 

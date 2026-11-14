@@ -1,7 +1,7 @@
 # Setup
 
-macOS only. `bin/gta6-clipper setup --mode both` does everything; this page is what it does and
-why, plus how to do it by hand.
+macOS only. `bin/gta6-clipper setup` installs the binaries, models and Python deps; it installs
+no LLM server. Pick your scoring backend at clip time with `--backend`.
 
 ## What gets installed
 
@@ -13,7 +13,6 @@ why, plus how to do it by hand.
 | `ggml-large-v3-turbo.bin` | the speech model, about 1.6 GB | downloaded into `~/.cache/gta6-clipper/models` |
 | `face_detection_yunet_2023mar.onnx` | facecam detection, about 230 KB | same folder |
 | Python venv | numpy, opencv-python, Pillow | created at `~/.cache/gta6-clipper/venv` |
-| Ollama + model | the free local LLM route | `brew install ollama`, optional |
 
 Nothing is installed system-wide without Homebrew's own prompts. The models land in
 `~/.cache/gta6-clipper/models` and the Python packages in `~/.cache/gta6-clipper/venv`, both of
@@ -22,45 +21,49 @@ which can be moved with `GTA6_CLIPPER_CACHE`.
 The Python venv is deliberate: Homebrew upgrades its Python without warning, and a skill that
 depends on `pip install --user` breaks the next time that happens.
 
-## Route 1: Claude (recommended)
+## Picking a backend
+
+The clipper runs the scoring LLM through a pluggable backend. Choose one with `--backend`:
+
+| Backend | `--backend` value | Cost | Notes |
+|---|---|---|---|
+| `opencode` | `opencode` | Free / subscription | opencode CLI |
+| `claude` | `claude` | $20/month | Claude Code CLI |
+| `openai` | `openai` | Depends | Any OpenAI-compatible endpoint |
+| `cmd:<template>` | `cmd:'<template>'` | Depends | Any shell command with `{prompt}` |
+| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai → `GTA6_CLIPPER_LLM_COMMAND` |
+
+### OpenAI-compatible endpoint (free local route with LM Studio)
+
+Leave LM Studio (or llama.cpp / Ollama /v1 / vLLM) running, then:
 
 ```bash
-bin/gta6-clipper setup --mode claude
+GTA6_CLIPPER_LLM_BASE_URL=http://localhost:1234/v1 \
+GTA6_CLIPPER_LLM_MODEL=qwen3.8-27b-uncensored-mlx \
+bin/gta6-clipper clip "<url>" --backend openai
 ```
 
-Needs the Claude Code CLI on a subscription ($20/month starts). No API key: the skill drives the
-`claude` CLI, which uses the subscription you already pay for. Best picks, fastest turnaround.
+No API key needed for local endpoints. Only set `GTA6_CLIPPER_LLM_API_KEY` if the endpoint
+requires one.
 
-## Route 2: Ollama (free)
+### Ollama (still works)
+
+Ollama isn't installed or hardcoded anymore — it's just another command:
 
 ```bash
-brew install ollama
-ollama serve
+bin/gta6-clipper clip "<url>" --backend "cmd:ollama run qwen3.5:27b {prompt}"
 ```
 
-Then, in another terminal:
+Model size follows your memory, not your disk: 16 GB RAM → `qwen3.5:9b`, 32 GB+ →
+`qwen3.5:27b`. More memory = sharper picks.
+
+### Custom command
+
+Any command where `{prompt}` is replaced with the scoring prompt:
 
 ```bash
-ollama pull qwen3.5:27b
+bin/gta6-clipper clip "<url>" --backend "cmd:llama-cli -p {prompt}"
 ```
-
-Model size follows your memory, not your disk. Check memory with the Apple menu, About This Mac,
-Memory:
-
-| Memory | Model | Note |
-|---|---|---|
-| 16 GB | `qwen3.5:9b` | usable, rougher picks |
-| 32 GB or more | `qwen3.5:27b` | sharper picks |
-
-Then use it:
-
-```bash
-bin/gta6-clipper setup --mode ollama
-bin/gta6-clipper clip "<url>" --mode ollama
-```
-
-Honest comparison: the free model is not Claude. It is slower, its picks are rougher, and expect
-back and forth before a clip is good enough. It still beats scrubbing a four hour stream by hand.
 
 ## Cookies
 
@@ -79,6 +82,6 @@ bin/gta6-clipper clip "<url>" --cookies chrome
 bin/gta6-clipper doctor
 ```
 
-Reports every dependency, the model files and both LLM backends, with the exact fix command for
-anything missing. `doctor --json` prints the same as JSON. The Claude CLI and Ollama are listed as
-optional: they are two routes to the same step, and only the one in use has to be there.
+Reports every dependency, the model files and each backend route, with the exact fix command for
+anything missing. `doctor --json` prints the same as JSON. LLM backends are optional: only the
+one you use has to be reachable.

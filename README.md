@@ -7,15 +7,15 @@ machine, finds where the streamer got loud, lets an LLM score and pick the momen
 and renders 1080x1920 clips with the facecam on top, the gameplay underneath, word-by-word
 captions, a hook title and a post caption with hashtags.
 
-macOS only. Two ways to run the scoring: a Claude subscription (best picks) or a free local Ollama
-model (no API key).
+macOS only. The scoring LLM is pluggable: opencode, claude, or any OpenAI-compatible endpoint
+(LM Studio, llama.cpp server, Ollama /v1, vLLM, cloud API, or a custom command).
 
 ## Install
 
 ```bash
 git clone https://github.com/NakhulGithesh/gta6-clipper.git
 cd gta6-clipper
-bin/gta6-clipper setup --mode claude      # or --mode ollama, or --mode both
+bin/gta6-clipper setup
 bin/gta6-clipper doctor
 ```
 
@@ -33,6 +33,18 @@ bin/gta6-clipper clip "https://www.youtube.com/watch?v=..." --out ./clips
 
 # age restricted streams and Kick
 bin/gta6-clipper clip "<url>" --cookies chrome
+
+# via LM Studio / any OpenAI-compatible endpoint (free, local)
+bin/gta6-clipper clip "<url>" --backend openai
+
+# via opencode CLI
+bin/gta6-clipper clip "<url>" --backend opencode
+
+# via Claude subscription
+bin/gta6-clipper clip "<url>" --backend claude
+
+# via any command (e.g. ollama)
+bin/gta6-clipper clip "<url>" --backend "cmd:ollama run qwen3.5:27b {prompt}"
 
 # find today's biggest GTA 6 streams and clip them
 bin/gta6-clipper auto-clip --count 7 --out ./clips
@@ -76,19 +88,32 @@ day of posting.
 - macOS, Python 3.10+
 - ffmpeg, ffprobe, yt-dlp, whisper.cpp (`bin/gta6-clipper setup` installs them)
 - numpy, opencv-python and Pillow, installed by setup into `~/.cache/gta6-clipper/venv`
-- a scoring backend: Claude Code CLI, or Ollama with a local model
+- a scoring backend: opencode CLI, Claude Code CLI, an OpenAI-compatible endpoint
+  (LM Studio, llama.cpp, Ollama /v1, etc.), or a custom command via `cmd:'<template>'`
 
 Captions are drawn with Pillow into a transparent layer that ffmpeg overlays, so the skill works
 with Homebrew's ffmpeg even though that build has no libass and no drawtext.
 
-## Free route
+## Backends
 
-| Memory | Model |
-|---|---|
-| 16 GB | `qwen3.5:9b` |
-| 32 GB or more | `qwen3.5:27b` |
+| Backend | `--backend` value | Cost | Notes |
+|---|---|---|---|
+| opencode | `opencode` | Free / subscription | `opencode run <prompt>` |
+| claude | `claude` | $20/month | Claude Code CLI, no API key |
+| openai | `openai` | Depends | Any OpenAI-compatible endpoint (LM Studio default `http://localhost:1234/v1`) |
+| cmd:<template> | `cmd:'<template>'` | Depends | Any shell command with `{prompt}`, e.g. `cmd:'ollama run qwen3.5:27b {prompt}'` |
+| auto (default) | `auto` | Depends | Probes opencode → claude → openai endpoint → `GTA6_CLIPPER_LLM_COMMAND` |
 
-The free model is not Claude: slower, rougher picks. It still beats scrubbing a stream by hand.
+OpenAI-compatible env vars:
+
+- `GTA6_CLIPPER_LLM_BASE_URL` — default `http://localhost:1234/v1` (LM Studio)
+- `GTA6_CLIPPER_LLM_MODEL` — model name
+- `GTA6_CLIPPER_LLM_API_KEY` — only if the endpoint requires one
+
+Your LM Studio model is a free local route — just leave LM Studio running and use `--backend openai`.
+
+Ollama still works through the command route:
+`--backend "cmd:ollama run qwen3.5:27b {prompt}"`.
 
 ## Before you post
 

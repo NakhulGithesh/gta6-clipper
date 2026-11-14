@@ -37,19 +37,19 @@ gta6-clipper/
 ├── LICENSE                   # MIT
 ├── NOTICE                    # attribution for vendored/inspired work
 ├── GATES.md                  # acceptance ledger (unlazy)
-├── bin/gta6-clipper          # CLI entrypoint (python3 -m)
+├── bin/gta6-clipper          # CLI entrypoint
 ├── src/gta6clipper/
 │   ├── cli.py                # subcommands: setup | clip | auto-clip | status | doctor
-│   ├── config.py             # paths, settings, mode selection
+│   ├── config.py             # paths, settings
 │   ├── fetch.py              # yt-dlp: audio-only, metadata, video segments, live search
 │   ├── transcribe.py         # whisper.cpp primary, YouTube auto-subs fallback
 │   ├── loudness.py           # RMS envelope from decoded PCM -> peaks
 │   ├── chat.py               # optional YouTube live-chat replay -> message velocity
 │   ├── moments.py            # candidate windows: loud peaks + chat spikes + transcript
-│   ├── llm.py                # backends: claude CLI, ollama; prompt build + JSON parse
+│   ├── llm.py                # pluggable backends: opencode, claude, openai, cmd:<template>, auto
 │   ├── rubric.py             # scoring rubric, moment types, harsh filters
 │   ├── facecam.py            # YuNet face detection -> corner-anchored inset box
-│   ├── captions.py           # ASS generation: word-by-word + hook title
+│   ├── captions.py           # Pillow-rendered word-by-word captions + hook title layer
 │   ├── ffmpeg.py             # filtergraph builder: vertical fit, facecam overlay, loudnorm
 │   ├── render.py             # orchestrator for clip rendering
 │   └── find_streams.py       # discover today's biggest game reaction streams
@@ -66,21 +66,29 @@ gta6-clipper/
    recorded while the audio is decoded: where the streamer got loud (RMS envelope peaks) and,
    when available, where YouTube chat sped up (messages per second). YouTube auto-captions are the
    fallback when whisper.cpp is unavailable.
-3. **Pick** — the transcript is read in 12-minute windows. The LLM (Claude Code CLI or a local
-   Ollama model) finds moments of the video's five types (first reaction, crazy discovery,
-   freakout, funny fail, hot take), scores each 0-100, and rejects anything that needs context or
-   opens on filler. Strict JSON in, validated JSON out.
+3. **Pick** — the transcript is read in 12-minute windows. The LLM (any pluggable backend:
+   opencode, claude, an OpenAI-compatible endpoint, or a custom command) finds moments of the
+   video's five types (first reaction, crazy discovery, freakout, funny fail, hot take), scores
+   each 0-100, and rejects anything that needs context or opens on filler. Strict JSON in,
+   validated JSON out.
 4. **Render** — for each kept moment: download only that minute range, detect the facecam box
    (YuNet + corner anchoring), build a 1080x1920 ffmpeg filtergraph (blurred backdrop, gameplay
-   centred, facecam pinned top), burn word-by-word captions and the hook title, normalise audio to
-   -14 LUFS, and write a post caption with hashtags beside it.
+   centred, facecam pinned top), burn word-by-word captions and the hook title (Pillow-rendered
+   transparent overlay), normalise audio to -14 LUFS, and write a post caption with hashtags
+   beside it.
 
-### Mode matrix
+### Backend matrix
 
-| Mode | LLM backend | Needs | Notes |
+| Backend | `--backend` value | Needs | Notes |
 |---|---|---|---|
-| `claude` (default) | `claude -p` CLI | Claude subscription | Best picks, fastest. No API key. |
-| `ollama` | `ollama run qwen3.5:27b` | Ollama + model | Free. 16 GB RAM -> qwen3.5:9b, 32 GB+ -> qwen3.5:27b. Slower, rougher picks. |
+| opencode | `opencode` | opencode CLI | `opencode run <prompt>` |
+| claude | `claude` | Claude subscription | Best picks. No API key. |
+| openai | `openai` | OpenAI-compatible endpoint | LM Studio, llama.cpp, Ollama /v1, vLLM, cloud |
+| cmd:<template> | `cmd:'<template>'` | any shell | `{prompt}` is replaced with the scoring prompt |
+| auto (default) | `auto` | — | Probes opencode → claude → openai → `GTA6_CLIPPER_LLM_COMMAND` |
+
+OpenAI-compatible env vars: `GTA6_CLIPPER_LLM_BASE_URL` (default `http://localhost:1234/v1`),
+`GTA6_CLIPPER_LLM_MODEL`, `GTA6_CLIPPER_LLM_API_KEY`.
 
 Transcription is always local (whisper.cpp). Chat velocity is optional and degrades silently to
 "not available" when `youtube-chat-downloader` is not installed.
@@ -88,9 +96,9 @@ Transcription is always local (whisper.cpp). Chat velocity is optional and degra
 ### CLI
 
 ```bash
-gta6-clipper setup [--mode claude|ollama|both]   # deps, models, checks
+gta6-clipper setup [--skip-model]   # deps, models, checks
 gta6-clipper doctor                              # what is missing, exact fix command
-gta6-clipper clip <url> [--out DIR] [--clips N] [--mode claude|ollama] [--cookies chrome]
+gta6-clipper clip <url> [--out DIR] [--clips N] [--backend auto|claude|openai|opencode|cmd:'<template>'] [--cookies chrome]
 gta6-clipper auto-clip [--count N] [--out DIR]   # find today's biggest streams, clip them
 gta6-clipper status                               # last run, output location, pending clips
 ```
@@ -99,7 +107,7 @@ gta6-clipper status                               # last run, output location, p
 
 ```
 <out>/<streamer-slug>/
-├── meta.json            # source URL, title, channel, duration, mode
+├── meta.json            # source URL, title, channel, duration, backend
 ├── transcript.json      # words with timings
 ├── moments.json         # scored candidates (all, including rejected)
 ├── clips.json           # kept clips with hook/title/caption/hashtags
@@ -114,7 +122,8 @@ gta6-clipper status                               # last run, output location, p
 - No facecam found -> render gameplay-only vertical, note it in `clips.json` (`facecam: null`).
 - LLM returns malformed JSON -> one repair attempt, then fail the scoring stage with the raw
   output saved. Never invent clips.
-- Ollama not running -> fail with `ollama serve` hint; no silent fallback to a cloud API.
+- LLM backend unreachable -> `doctor` reports each route's status; no silent fallback to a cloud
+  API. Never invent clips.
 
 ## Testing
 
