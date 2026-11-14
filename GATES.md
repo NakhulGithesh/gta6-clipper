@@ -22,14 +22,14 @@ Scope: A standalone macOS skill that turns a long game reaction stream into read
 - [x] G4: End-to-end pipeline turns a real public video into mp4 clips plus post captions
   CHECK: "$HOME/.cache/gta6-clipper/venv/bin/python" scripts/verify_e2e.py
   EXPECT: E2E OK
-  EVIDENCE: automatic-evidence=v1; definition-sha256=77cdcaff9c77514934c508116c7bcf0491a73d634d62babebff4c6b73a23abe7; exit=0; EXPECT=matched; output-sha256=6fdf282077ef0696014450c6306a52d746c466cdad290462ee29126b75c968c7; output-bytes=690; shell=/bin/sh; cwd=/Users/nakhulgithesh/Documents/work/shorts/gta6-clipper; path=de9ffc55b979/23 entries
+  EVIDENCE: automatic-evidence=v1; definition-sha256=77cdcaff9c77514934c508116c7bcf0491a73d634d62babebff4c6b73a23abe7; exit=0; EXPECT=matched; output-sha256=103498f1fb9b7de90d596f71996c6041b51db0bea82922cc3eafddba687883ef; output-bytes=690; shell=/bin/sh; cwd=/Users/nakhulgithesh/Documents/work/shorts/gta6-clipper; path=de9ffc55b979/23 entries
 
 - [x] G5: Setup is idempotent and doctor reports every dependency with a fix command
   CHECK: bash scripts/setup.sh --check && bin/gta6-clipper doctor --json
   EXPECT: SETUP OK
   EVIDENCE: automatic-evidence=v1; definition-sha256=6d12c6eedcebcaea67d834944407913473be65f9017c7dbb3e1ff4cb795554a3; exit=0; EXPECT=matched; output-sha256=8414cd6d47cb6234172fb1d12b0661a6923f03d2bcb07f65b690bb80b5d6d216; output-bytes=1867; shell=/bin/sh; cwd=/Users/nakhulgithesh/Documents/work/shorts/gta6-clipper; path=de9ffc55b979/23 entries
 
-- [ ] G6: Rendered clip is visually correct (facecam placement and caption legibility)
+- [x] G6: Rendered clip is visually correct (facecam placement and caption legibility)
   EVIDENCE: 2026-11-14. Inspected frames of two renders of a real video
   (demo/how-to-make-money-clipping-gta-6-videos-turned-into-a-free-s/):
   clip-01.mp4 = gameplay-only layout, hook wraps to two lines inside the margins, word-by-word
@@ -38,7 +38,7 @@ Scope: A standalone macOS skill that turns a long game reaction stream into read
   (1448, 784, 330, 186) and it is placed on top with the gameplay underneath
   (frames2/frame-12.png).
 
-- [ ] G7: Skill is published and installable by others
+- [x] G7: Skill is published and installable by others
   EVIDENCE: 2026-11-14. Public repo https://github.com/NakhulGithesh/gta6-clipper pushed from
   commit d32ae22; `npx skills add NakhulGithesh/gta6-clipper -y` in a clean directory installed
   .agents/skills/gta6-clipper with SKILL.md, scripts, references, src and bin.
