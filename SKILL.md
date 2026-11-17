@@ -51,13 +51,16 @@ clip time:
 | `claude` | `claude` | $20/month | Claude Code CLI, no API key |
 | `openai` | `openai` | Depends | Any OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1, vLLM, cloud) |
 | `cmd:<template>` | `cmd:'<template>'` | Depends | Any shell command with `{prompt}` |
-| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai endpoint → `GTA6_CLIPPER_LLM_COMMAND` |
+| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai endpoint → `GTA6_CLIPPER_LLM_COMMAND`; if a route fails at call time it falls through to the next |
 
 OpenAI-compatible env vars:
 
 - `GTA6_CLIPPER_LLM_BASE_URL` — default `http://localhost:1234/v1` (LM Studio)
 - `GTA6_CLIPPER_LLM_MODEL` — model name, e.g. `qwen3.8-27b-uncensored-mlx`
 - `GTA6_CLIPPER_LLM_API_KEY` — only if the endpoint requires one
+
+The opencode CLI is found on `PATH`, at `/Applications/OpenCode.app/Contents/Resources/opencode-cli`
+(the desktop app's bundled CLI), or wherever `OPENCODE_CLI` points.
 
 Your LM Studio model is a free local route — just leave LM Studio running and use `--backend openai`. No Ollama install needed.
 

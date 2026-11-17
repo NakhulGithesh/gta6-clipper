@@ -11,6 +11,10 @@ import sys
 from . import config, pipeline
 
 
+def _log(message: str) -> None:
+    print(f"[gta6-clipper] {message}", flush=True)
+
+
 def _doctor_checks() -> list[dict]:
     checks: list[dict] = []
 

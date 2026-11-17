@@ -29,6 +29,32 @@ from .rubric import validate_moment
 DEFAULT_LLM_BASE_URL = os.environ.get("GTA6_CLIPPER_LLM_BASE_URL", "http://localhost:1234/v1")
 DEFAULT_LLM_MODEL = os.environ.get("GTA6_CLIPPER_LLM_MODEL", "")
 
+# opencode is not always on PATH: the desktop app bundles the CLI.
+_OPENCODE_FALLBACKS = (
+    "/Applications/OpenCode.app/Contents/Resources/opencode-cli",
+    os.path.expanduser("~/.opencode/bin/opencode"),
+)
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI.sub("", text)
+
+
+def _opencode_path() -> str | None:
+    """Locate the opencode CLI: env override, PATH, then the app bundle."""
+    override = os.environ.get("OPENCODE_CLI")
+    if override and os.path.isfile(override):
+        return override
+    found = shutil.which("opencode")
+    if found:
+        return found
+    for candidate in _OPENCODE_FALLBACKS:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
 
 class Backend:
     """A route that turns a prompt into text."""
@@ -47,16 +73,16 @@ class OpenCodeBackend(Backend):
     name = "opencode"
 
     def probe(self) -> bool:
-        return shutil.which("opencode") is not None
+        return _opencode_path() is not None
 
     def complete(self, prompt: str, timeout: int = 900) -> str:
-        path = shutil.which("opencode") or "opencode"
+        path = _opencode_path() or "opencode"
         proc = subprocess.run(
             [path, "run", prompt], capture_output=True, text=True, timeout=timeout
         )
         if proc.returncode != 0:
             raise RuntimeError(f"opencode failed: {(proc.stderr or proc.stdout).strip()[:500]}")
-        return proc.stdout.strip()
+        return _strip_ansi(proc.stdout).strip()
 
 
 class ClaudeCliBackend(Backend):
@@ -178,11 +204,57 @@ def _routes() -> list[Backend]:
     return routes
 
 
+class AutoBackend(Backend):
+    """Try each route until one answers.
+
+    Existence is not health: an installed but logged-out CLI, or a local server
+    that stopped between probe and call, must not kill the run. The first route
+    that returns text wins and is reused for the remaining windows.
+    """
+
+    name = "auto"
+
+    def __init__(self, routes: list[Backend]):
+        self.routes = routes
+        self._chosen: Backend | None = None
+
+    def probe(self) -> bool:
+        return any(route.probe() for route in self.routes)
+
+    def complete(self, prompt: str, timeout: int = 900) -> str:
+        errors: list[str] = []
+        ordered = ([self._chosen] if self._chosen else []) + [
+            r for r in self.routes if r is not self._chosen
+        ]
+        for route in ordered:
+            try:
+                if not route.probe():
+                    continue
+            except Exception:
+                continue
+            try:
+                text = route.complete(prompt, timeout)
+            except Exception as exc:
+                errors.append(f"{route.name}: {exc}")
+                continue
+            if text:
+                self._chosen = route
+                self.name = route.name
+                return text
+            errors.append(f"{route.name}: empty response")
+        raise RuntimeError(
+            "no LLM backend answered. " + "; ".join(errors[:6])
+            if errors
+            else "no LLM backend available"
+        )
+
+
 def get_backend(spec: str = "auto", model: str | None = None) -> Backend:
     """Resolve a backend spec to a concrete route.
 
     Specs: ``opencode``, ``claude``, ``openai``, ``cmd:<template>``, ``auto``.
-    ``auto`` probes each route in order and picks the first that answers.
+    ``auto`` probes each route in order and returns a fall-through backend that
+    moves on if a route fails at call time.
     """
     spec = (spec or "auto").strip()
 
@@ -193,17 +265,15 @@ def get_backend(spec: str = "auto", model: str | None = None) -> Backend:
         return CommandBackend(spec[len("cmd:") :])
 
     if spec == "auto":
-        for route in _routes():
-            try:
-                if route.probe():
-                    return route
-            except Exception:
-                continue
-        raise RuntimeError(
-            "no LLM backend available. Install opencode or the claude CLI, "
-            "or run an OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1) "
-            "and set GTA6_CLIPPER_LLM_BASE_URL / GTA6_CLIPPER_LLM_MODEL."
-        )
+        routes = _routes()
+        backend = AutoBackend(routes)
+        if not backend.probe():
+            raise RuntimeError(
+                "no LLM backend available. Install opencode or the claude CLI, "
+                "or run an OpenAI-compatible endpoint (LM Studio, llama.cpp, Ollama /v1) "
+                "and set GTA6_CLIPPER_LLM_BASE_URL / GTA6_CLIPPER_LLM_MODEL."
+            )
+        return backend
 
     known = {"opencode": OpenCodeBackend, "claude": ClaudeCliBackend, "openai": OpenAIBackend}
     if spec not in known:

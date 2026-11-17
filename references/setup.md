@@ -31,7 +31,10 @@ The clipper runs the scoring LLM through a pluggable backend. Choose one with `-
 | `claude` | `claude` | $20/month | Claude Code CLI |
 | `openai` | `openai` | Depends | Any OpenAI-compatible endpoint |
 | `cmd:<template>` | `cmd:'<template>'` | Depends | Any shell command with `{prompt}` |
-| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai → `GTA6_CLIPPER_LLM_COMMAND` |
+| `auto` (default) | `auto` | Depends | Probes opencode → claude → openai → `GTA6_CLIPPER_LLM_COMMAND`, and falls through if a route fails at call time |
+
+`opencode` is found on `PATH`, in the desktop app bundle
+(`/Applications/OpenCode.app/Contents/Resources/opencode-cli`), or at `OPENCODE_CLI`.
 
 ### OpenAI-compatible endpoint (free local route with LM Studio)
 

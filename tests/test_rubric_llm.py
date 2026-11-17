@@ -127,8 +127,10 @@ class TestBackends:
         monkeypatch.setattr(OpenAIBackend, "probe", lambda self: True)
         assert isinstance(get_backend("openai"), OpenAIBackend)
 
-    def test_explicit_backend_raises_when_unreachable(self):
-        # opencode is not installed
+    def test_explicit_backend_raises_when_unreachable(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        monkeypatch.setattr(llm_mod, "_opencode_path", lambda: None)
         with pytest.raises(RuntimeError):
             get_backend("opencode")
 
@@ -163,3 +165,103 @@ class TestBackends:
         b = OpenAIBackend(base_url="http://x/v1", model="qwen3.8-27b")
         assert b.base_url == "http://x/v1"
         assert b.model == "qwen3.8-27b"
+
+
+class TestOpenCodePath:
+    def test_env_override_wins(self, monkeypatch, tmp_path):
+        import gta6clipper.llm as llm_mod
+
+        fake = tmp_path / "opencode"
+        fake.write_text("#!/bin/sh\n")
+        fake.chmod(0o755)
+        monkeypatch.setenv("OPENCODE_CLI", str(fake))
+        assert llm_mod._opencode_path() == str(fake)
+
+    def test_app_bundle_is_used_when_not_on_path(self, monkeypatch, tmp_path):
+        import gta6clipper.llm as llm_mod
+
+        monkeypatch.delenv("OPENCODE_CLI", raising=False)
+        monkeypatch.setattr(llm_mod.shutil, "which", lambda name: None)
+        fake = tmp_path / "opencode-cli"
+        fake.write_text("")
+        monkeypatch.setattr(llm_mod, "_OPENCODE_FALLBACKS", (str(fake),))
+        assert llm_mod._opencode_path() == str(fake)
+
+    def test_missing_everywhere_returns_none(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        monkeypatch.delenv("OPENCODE_CLI", raising=False)
+        monkeypatch.setattr(llm_mod.shutil, "which", lambda name: None)
+        monkeypatch.setattr(llm_mod, "_OPENCODE_FALLBACKS", ("/nope/opencode",))
+        assert llm_mod._opencode_path() is None
+
+
+class TestAutoFallback:
+    def _stub(self, monkeypatch, name, *, text=None, error=None, reachable=True):
+        import gta6clipper.llm as llm_mod
+
+        class Stub(llm_mod.Backend):
+            pass
+
+        stub = Stub()
+        stub.name = name
+        stub.probe = lambda: reachable
+        if error is not None:
+            def complete(prompt, timeout=900):
+                raise RuntimeError(error)
+        else:
+            def complete(prompt, timeout=900):
+                return text
+        stub.complete = complete
+        return stub
+
+    def test_returns_first_route_that_answers(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        good = self._stub(monkeypatch, "good", text="OK")
+        backend = llm_mod.AutoBackend([good])
+        assert backend.complete("prompt") == "OK"
+        assert backend.name == "good"
+
+    def test_skips_a_route_that_raises(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        broken = self._stub(monkeypatch, "claude", error="not logged in")
+        good = self._stub(monkeypatch, "opencode", text="OK")
+        backend = llm_mod.AutoBackend([broken, good])
+        assert backend.complete("prompt") == "OK"
+        assert backend.name == "opencode"
+
+    def test_remembers_the_working_route(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        broken = self._stub(monkeypatch, "claude", error="not logged in")
+        good = self._stub(monkeypatch, "opencode", text="OK")
+        backend = llm_mod.AutoBackend([broken, good])
+        backend.complete("first")
+        assert backend._chosen is good
+        assert backend.complete("second") == "OK"
+
+    def test_reports_every_failure(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        a = self._stub(monkeypatch, "a", error="boom a")
+        b = self._stub(monkeypatch, "b", error="boom b")
+        backend = llm_mod.AutoBackend([a, b])
+        with pytest.raises(RuntimeError) as excinfo:
+            backend.complete("prompt")
+        message = str(excinfo.value)
+        assert "boom a" in message and "boom b" in message
+
+    def test_unreachable_routes_are_skipped(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        missing = self._stub(monkeypatch, "missing", text="should not run", reachable=False)
+        good = self._stub(monkeypatch, "good", text="OK")
+        assert llm_mod.AutoBackend([missing, good]).complete("p") == "OK"
+
+    def test_get_backend_auto_is_fallthrough(self, monkeypatch):
+        import gta6clipper.llm as llm_mod
+
+        monkeypatch.setattr(llm_mod.OpenCodeBackend, "probe", lambda self: True)
+        assert isinstance(get_backend("auto"), llm_mod.AutoBackend)
