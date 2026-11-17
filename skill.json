@@ -15,8 +15,9 @@
   "commands": {
     "setup": "install dependencies and models",
     "doctor": "report what is missing with the fix command",
-    "clip": "clip one stream by URL",
+    "clip": "clip one stream by URL (finished VOD)",
     "auto-clip": "find today's biggest streams and clip them",
+    "live": "record a live stream for a duration, then clip it",
     "status": "list what has been clipped"
   },
   "backends": {

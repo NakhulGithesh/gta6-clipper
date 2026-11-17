@@ -100,8 +100,23 @@ gta6-clipper setup [--skip-model]   # deps, models, checks
 gta6-clipper doctor                              # what is missing, exact fix command
 gta6-clipper clip <url> [--out DIR] [--clips N] [--backend auto|claude|openai|opencode|cmd:'<template>'] [--cookies chrome]
 gta6-clipper auto-clip [--count N] [--out DIR]   # find today's biggest streams, clip them
+gta6-clipper live <url> --duration SECONDS [--out DIR] [--clips N] [--backend ...] [--cookies chrome]
 gta6-clipper status                               # last run, output location, pending clips
 ```
+
+### Live stream recording
+
+For streams that are live right now, `live` records audio for a fixed duration via ffmpeg
+(ffmpeg stops automatically after the duration), then runs the same scoring and rendering
+pipeline on that recording. A 1-hour recording yields roughly the same output as a 1-hour VOD.
+
+- YouTube live: works (age-restricted streams need `--cookies chrome`)
+- Twitch live: works (no chat-spike signal, loudness + transcript only)
+- Kick: works with `--cookies chrome`
+
+Under the hood: yt-dlp resolves the direct stream URL (cookies applied), ffmpeg records audio
+for `duration_seconds` as 16 kHz mono WAV, then whisper.cpp transcribes and the normal pipeline
+picks and renders clips.
 
 ### Output
 

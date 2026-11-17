@@ -54,6 +54,61 @@ def search_command(query: str, limit: int = 20, cookies: str | None = None) -> l
     ]
 
 
+def _direct_stream_url(url: str, cookies: str | None = None) -> str:
+    """Resolve a live stream URL to a direct playable URL via yt-dlp."""
+    proc = run(_base(cookies) + ["--get-url", url], timeout=120)
+    if proc.returncode != 0:
+        raise RuntimeError(f"yt-dlp could not resolve stream URL: {proc.stderr.strip()[:400]}")
+    # yt-dlp may output multiple lines (formats); take the first non-empty one
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if line and line.startswith(("http://", "https://")):
+            return line
+    raise RuntimeError(f"yt-dlp returned no playable URL: {proc.stdout[:200]}")
+
+
+def record_stream_live_command(
+    stream_url: str, duration_seconds: int, outdir: str
+) -> list[str]:
+    """Build an ffmpeg command to record a live stream for a fixed duration.
+
+    Records both video and audio as MP4, then stops. Safe for ongoing streams.
+    """
+    return [
+        "ffmpeg", "-y", "-v", "error",
+        "-i", stream_url,
+        "-t", str(duration_seconds),
+        "-c", "copy",  # copy both video and audio without re-encoding
+        os.path.join(outdir, "live_stream.mp4"),
+    ]
+
+
+def record_stream_live(
+    url: str, duration_seconds: int, outdir: str, cookies: str | None = None
+) -> str:
+    """Record ``duration_seconds`` of a live stream as MP4.
+
+    Resolves the stream URL via yt-dlp (cookies applied there), then records
+    with ffmpeg for the fixed duration. Returns the path to the MP4 file.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    stream_url = _direct_stream_url(url, cookies)
+    proc = run(record_stream_live_command(stream_url, duration_seconds, outdir))
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg live recording failed: {proc.stderr.strip()[:400]}"
+        )
+    out_path = os.path.join(outdir, "live_stream.mp4")
+    if not os.path.exists(out_path):
+        raise RuntimeError("ffmpeg finished but no live stream file appeared")
+    return out_path
+
+
+# Backwards-compatible alias
+record_audio_live_command = record_stream_live_command
+record_audio_live = record_stream_live
+
+
 def run(cmd: list[str], timeout: int = 7200) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 

@@ -52,6 +52,9 @@ bin/gta6-clipper auto-clip --count 7 --out ./clips
 # only what is live right now
 bin/gta6-clipper auto-clip --count 7 --live-only
 
+# record a live stream for 1 hour, then clip it
+bin/gta6-clipper live "<stream url>" --duration 3600 --out ./clips
+
 # what has been clipped
 bin/gta6-clipper status --out ./clips
 ```
@@ -114,6 +117,21 @@ Your LM Studio model is a free local route — just leave LM Studio running and 
 
 Ollama still works through the command route:
 `--backend "cmd:ollama run qwen3.5:27b {prompt}"`.
+
+## Live / ongoing streams
+
+For streams that are live right now, use `live` instead of `clip`. It records audio for a fixed
+duration (ffmpeg stops automatically), then runs the same scoring and rendering pipeline:
+
+```bash
+bin/gta6-clipper live "<stream url>" --duration 3600 --out ./clips
+```
+
+- YouTube live: works (age-restricted streams need `--cookies chrome`)
+- Twitch live: works (no chat-spike signal, loudness + transcript only)
+- Kick: works with `--cookies chrome`
+
+A 1-hour recording produces clips the same way a 1-hour VOD would.
 
 ## Before you post
 

@@ -85,3 +85,12 @@ bin/gta6-clipper doctor
 Reports every dependency, the model files and each backend route, with the exact fix command for
 anything missing. `doctor --json` prints the same as JSON. LLM backends are optional: only the
 one you use has to be reachable.
+
+## Live stream recording
+
+The `live` command records audio from an ongoing stream for a fixed duration using ffmpeg, then
+clips the good moments from that recording. ffmpeg is installed by setup (`brew install ffmpeg`).
+No additional setup is needed for live recording.
+
+Age-restricted YouTube streams and Kick need `--cookies chrome` so yt-dlp can resolve the stream
+URL before ffmpeg records from it.

@@ -1,5 +1,6 @@
 """Tests for source fetching, transcription parsing and stream discovery."""
 import json
+import os
 import subprocess
 
 import pytest
@@ -119,3 +120,47 @@ class TestFindStreams:
         streams = [{"id": "a", "title": "x", "is_live": True}]
         ranked = rank_streams(streams, limit=1)
         assert ranked[0]["id"] == "a"
+
+
+class TestLiveRecording:
+    def test_record_stream_live_command_uses_duration(self):
+        cmd = fetch.record_stream_live_command("https://stream.example.com/live", 3600, "/tmp/out")
+        assert cmd[0] == "ffmpeg"
+        assert "-t" in cmd
+        assert "3600" in cmd
+        assert "-i" in cmd
+
+    def test_record_stream_live_cookies_are_resolved_via_ytdlp(self, monkeypatch, tmp_path):
+        calls = []
+        outdir = str(tmp_path)
+
+        def fake_run(cmd, timeout=7200):
+            calls.append(list(cmd))
+            if cmd and cmd[0] == "ffmpeg":
+                out_path = os.path.join(outdir, "live_stream.mp4")
+                with open(out_path, "wb") as f:
+                    f.write(b"fake mp4")
+            class Result:
+                returncode = 0
+                stdout = "https://direct.example.com/stream.m3u8\n"
+                stderr = ""
+            return Result()
+
+        monkeypatch.setattr(fetch, "run", fake_run)
+        path = fetch.record_stream_live("https://x/y", 300, outdir, cookies="chrome")
+        assert path == os.path.join(outdir, "live_stream.mp4")
+        assert os.path.exists(path)
+        assert any("--cookies-from-browser" in c and "chrome" in c for c in calls)
+        ffmpeg_calls = [c for c in calls if c[0] == "ffmpeg"]
+        assert len(ffmpeg_calls) == 1
+        assert any("direct.example.com" in arg for arg in ffmpeg_calls[0])
+
+    def test_record_stream_live_output_is_mp4(self):
+        cmd = fetch.record_stream_live_command("https://stream.example.com/live", 600, "/tmp/out")
+        assert "-vn" not in cmd  # video is included
+        assert "-c" in cmd
+        assert "copy" in cmd
+
+    def test_record_audio_live_alias(self):
+        assert fetch.record_audio_live is fetch.record_stream_live
+        assert fetch.record_audio_live_command is fetch.record_stream_live_command

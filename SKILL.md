@@ -90,6 +90,25 @@ bin/gta6-clipper clip "<url>" --backend claude
 bin/gta6-clipper clip "<url>" --backend "cmd:ollama run qwen3.5:27b {prompt}"
 ```
 
+## Live / ongoing streams
+
+For a stream that is **live right now**, `clip` won't work because the download never finishes. Use `live` instead:
+
+```bash
+# Record 1 hour of a live stream, then clip the good moments
+bin/gta6-clipper live "<stream url>" --duration 3600 --out ./clips
+
+# Record 30 minutes, 3 clips
+bin/gta6-clipper live "<stream url>" --duration 1800 --clips 3 --out ./clips
+
+# Age-restricted streams need cookies
+bin/gta6-clipper live "<url>" --duration 3600 --cookies chrome
+```
+
+`live` records audio for the fixed duration (ffmpeg stops automatically), then runs the same scoring and rendering pipeline on that recording. A 1-hour recording yields roughly the same output as a 1-hour VOD.
+
+Twitch live streams work the same way; Kick needs `--cookies chrome`.
+
 The pipeline does the video's four steps:
 
 1. **Audio only.** A four hour stream is a few hundred MB, not a few GB.

@@ -71,17 +71,42 @@ def clip_stream(
     window_minutes: int = config.WINDOW_MINUTES,
     min_score: int = config.MIN_SCORE,
     query: str = "",
+    local_audio_path: str | None = None,
+    local_video_path: str | None = None,
+    source_label: str | None = None,
 ) -> dict:
     started = time.time()
     os.makedirs(out_dir, exist_ok=True)
 
     _log(f"reading metadata for {url}")
-    meta = fetch.fetch_metadata(url, cookies)
+    try:
+        meta = fetch.fetch_metadata(url, cookies)
+    except Exception:
+        meta = {
+            "id": "",
+            "title": source_label or url,
+            "channel": "",
+            "channel_url": "",
+            "duration": 0.0,
+            "is_live": True,
+            "live_status": "is_live",
+            "view_count": 0,
+            "webpage_url": url,
+            "thumbnail": "",
+            "upload_date": "",
+        }
     workdir = config.work_dir(out_dir, meta["title"] or meta["id"] or "stream")
     _log(f"stream: {meta['title']} ({meta['duration'] / 60:.0f} min) -> {workdir}")
 
-    _log("downloading audio only")
-    audio_path = fetch.fetch_audio(url, workdir, cookies)
+    if local_audio_path:
+        _log(f"using local audio: {local_audio_path}")
+        audio_path = local_audio_path
+    elif local_video_path:
+        _log(f"using local video: {local_video_path}")
+        audio_path = local_video_path
+    else:
+        _log("downloading audio only")
+        audio_path = fetch.fetch_audio(url, workdir, cookies)
 
     _log("transcribing")
     words, source = transcribe_stream(audio_path, url, workdir, cookies)
@@ -146,7 +171,10 @@ def clip_stream(
             start, end = float(moment["start"]), float(moment["end"])
             _log(f"clip {index}/{len(selected)}: {start:.0f}s-{end:.0f}s {moment['hook']!r}")
             segment_dir = os.path.join(workdir, f"segment-{index:02d}")
-            segment = fetch.fetch_video_section(url, start, end, segment_dir, cookies)
+            if local_video_path:
+                segment = local_video_path
+            else:
+                segment = fetch.fetch_video_section(url, start, end, segment_dir, cookies)
             out_path = os.path.join(workdir, f"clip-{index:02d}.mp4")
             result = render_clip(
                 segment,

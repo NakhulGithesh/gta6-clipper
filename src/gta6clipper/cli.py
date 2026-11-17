@@ -163,6 +163,33 @@ def cmd_auto_clip(args) -> int:
     return 0
 
 
+def cmd_live(args) -> int:
+    """Record a live stream for a duration, then clip the good moments."""
+    from . import fetch
+
+    out_dir = args.out
+    os.makedirs(out_dir, exist_ok=True)
+
+    _log(f"recording live stream for {args.duration}s from {args.url}")
+    video_path = fetch.record_stream_live(args.url, args.duration, out_dir, args.cookies)
+    _log(f"recorded: {video_path}")
+
+    result = pipeline.clip_stream(
+        args.url,
+        out_dir=out_dir,
+        clips=args.clips,
+        backend=_backend_for(args),
+        cookies=args.cookies,
+        skip_render=args.no_render,
+        window_minutes=args.window,
+        min_score=args.min_score,
+        local_video_path=video_path,
+        source_label=f"live:{args.duration}s",
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("clips") or args.no_render else 1
+
+
 def cmd_status(args) -> int:
     out_dir = args.out
     if not os.path.isdir(out_dir):
@@ -216,6 +243,18 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--cookies", default=None)
     auto.add_argument("--live-only", action="store_true", help="only clip streams that are live now")
     auto.set_defaults(func=cmd_auto_clip)
+
+    live = sub.add_parser("live", help="record a live stream for a duration, then clip it")
+    live.add_argument("url")
+    live.add_argument("--duration", type=int, default=3600, help="seconds to record (default 3600 = 1 hour)")
+    live.add_argument("--out", default=config.DEFAULT_OUT_DIR)
+    live.add_argument("--clips", type=int, default=config.DEFAULT_CLIP_COUNT)
+    live.add_argument("--backend", default="auto", help="LLM backend: opencode, claude, openai, cmd:'<template>', auto")
+    live.add_argument("--cookies", default=None, help="browser for --cookies-from-browser, e.g. chrome")
+    live.add_argument("--window", type=int, default=config.WINDOW_MINUTES)
+    live.add_argument("--min-score", type=int, default=config.MIN_SCORE)
+    live.add_argument("--no-render", action="store_true", help="stop after scoring")
+    live.set_defaults(func=cmd_live)
 
     status = sub.add_parser("status", help="show what has been clipped")
     status.add_argument("--out", default=config.DEFAULT_OUT_DIR)
