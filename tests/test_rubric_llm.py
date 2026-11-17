@@ -82,6 +82,11 @@ class TestPrompt:
         p = build_scoring_prompt("[00:01] the streamer screams", 0.0, 720.0)
         assert "the streamer screams" in p
 
+    def test_prompt_asks_for_postable_duration(self):
+        p = build_scoring_prompt("[00:01] hello", 0.0, 720.0)
+        assert "15" in p and "45" in p
+        assert "seconds" in p
+
 
 class TestParseMoments:
     def test_plain_json_array(self):

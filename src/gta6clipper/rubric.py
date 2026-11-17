@@ -109,6 +109,9 @@ Be HARSH. Reject a moment when:
 
 Score each moment 0-100. Below 70 is not worth posting. Be harsh with the score too.
 
+A clip must run 15 to 45 seconds: the reaction plus the beat that pays it off.
+Too short and it has no payoff; too long and it drags.
+
 Return ONLY a JSON array, no commentary. Each element:
 {{
   "start": <seconds into the stream, number>,
